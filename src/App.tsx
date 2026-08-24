@@ -1,0 +1,1510 @@
+import React, { useState, useEffect } from 'react';
+import {
+  User,
+  EarningTask,
+  Transaction,
+  Referral,
+  NotificationItem,
+  VipPackage,
+  TierLevel,
+  WhatsAppPackageItem,
+  CashbackItem,
+  WhatsAppSubmission,
+  InvestmentPlan,
+  ActiveInvestment,
+  PayHeroConfig
+} from './types';
+import {
+  INITIAL_USERS,
+  INITIAL_TASKS,
+  INITIAL_TRANSACTIONS,
+  INITIAL_REFERRALS,
+  INITIAL_NOTIFICATIONS,
+  INITIAL_CASHBACK_ITEMS,
+  INITIAL_ACTIVE_INVESTMENTS,
+  WHATSAPP_PACKAGES,
+  PIPELINE_PACKAGES,
+  TODAY_PRODUCT_AD,
+  INITIAL_PAYHERO_CONFIG
+} from './data/mockData';
+import { AuthModule } from './components/AuthModule';
+import { Sidebar, AppView } from './components/Sidebar';
+import { TopHeader } from './components/TopHeader';
+import { UserDashboard } from './components/UserDashboard';
+import { TasksView } from './components/TasksView';
+import { SpinWheelView } from './components/SpinWheelView';
+import { ReferralsView } from './components/ReferralsView';
+import { CashierView } from './components/CashierView';
+import { LedgerView } from './components/LedgerView';
+import { AdminDashboard } from './components/AdminDashboard';
+import { WhatsAppPackagesView } from './components/WhatsAppPackagesView';
+import { CashbackBonusView } from './components/CashbackBonusView';
+import { WhatsAppEarningsView } from './components/WhatsAppEarningsView';
+import { AuthorizePackageView } from './components/AuthorizePackageView';
+import { UnlockMpesaView } from './components/UnlockMpesaView';
+import { AutomationPackageView } from './components/AutomationPackageView';
+import { VerifiedAgentView } from './components/VerifiedAgentView';
+import { UniversePackageView } from './components/UniversePackageView';
+import { InvestmentPlansView } from './components/InvestmentPlansView';
+import { MpesaDepositModal } from './components/Modals/MpesaDepositModal';
+import { WithdrawalModal } from './components/Modals/WithdrawalModal';
+import { TaskExecutionModal } from './components/Modals/TaskExecutionModal';
+import { ReceiptModal } from './components/Modals/ReceiptModal';
+import { NotificationsDrawer } from './components/Modals/NotificationsDrawer';
+import { FloatingToast } from './components/FloatingToast';
+import confetti from 'canvas-confetti';
+
+export default function App() {
+  // Persistence key helpers
+  const getStored = <T,>(key: string, fallback: T): T => {
+    try {
+      const item = localStorage.getItem(`eneza_${key}`);
+      return item ? JSON.parse(item) : fallback;
+    } catch {
+      return fallback;
+    }
+  };
+
+  const setStored = <T,>(key: string, val: T) => {
+    try {
+      localStorage.setItem(`eneza_${key}`, JSON.stringify(val));
+    } catch {
+      // ignore
+    }
+  };
+
+  const normalizeUser = (u: any): User => {
+    if (!u) return INITIAL_USERS[0];
+    return {
+      id: u.id || `usr_${Date.now()}`,
+      username: u.username || 'user',
+      firstName: u.firstName || 'User',
+      lastName: u.lastName || '',
+      phone: u.phone || '0700000000',
+      email: u.email || '',
+      password: u.password || '',
+      role: u.role || 'user',
+      isActivated: Boolean(u.isActivated),
+      tier: u.tier || 'Standard',
+      balance: Number(u.balance || 0),
+      pendingBalance: Number(u.pendingBalance || 0),
+      totalWithdrawn: Number(u.totalWithdrawn || 0),
+      totalEarned: Number(u.totalEarned || 0),
+      referralCode: u.referralCode || 'ENEZA123',
+      referredBy: u.referredBy,
+      spinsRemaining: Number(u.spinsRemaining || 0),
+      tasksCompletedToday: Number(u.tasksCompletedToday || 0),
+      maxTasksPerDay: Number(u.maxTasksPerDay || 5),
+      createdAt: u.createdAt || new Date().toISOString(),
+      avatarUrl: u.avatarUrl,
+      whatsappBalance: Number(u.whatsappBalance || 0),
+      pendingCashbackTotal: Number(u.pendingCashbackTotal || 0),
+      activeWhatsAppPackage: u.activeWhatsAppPackage,
+      isAuthorizedPackagePurchased: Boolean(u.isAuthorizedPackagePurchased),
+      isUnlockMpesaPurchased: Boolean(u.isUnlockMpesaPurchased),
+      isAutomationPackagePurchased: Boolean(u.isAutomationPackagePurchased),
+      isVerifiedAgentPurchased: Boolean(u.isVerifiedAgentPurchased),
+      isUniversePackagePurchased: Boolean(u.isUniversePackagePurchased),
+    };
+  };
+
+  // Main State
+  const [users, setUsers] = useState<User[]>(() => {
+    const raw = getStored('users', INITIAL_USERS);
+    const parsed = Array.isArray(raw) ? raw.map(normalizeUser) : INITIAL_USERS.map(normalizeUser);
+    const hasAdmin = parsed.some((u) => u.role === 'admin' || u.id === 'usr_admin');
+    if (!hasAdmin) {
+      return [INITIAL_USERS[0], ...parsed];
+    }
+    return parsed;
+  });
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = getStored<any | null>('current_user', null);
+    return saved ? normalizeUser(saved) : null;
+  });
+  const [currentView, setCurrentView] = useState<AppView>('userDashboardView');
+  const [tasks, setTasks] = useState<EarningTask[]>(() => getStored('tasks', INITIAL_TASKS));
+  const [transactions, setTransactions] = useState<Transaction[]>(() =>
+    getStored('transactions', INITIAL_TRANSACTIONS)
+  );
+  const [referrals, setReferrals] = useState<Referral[]>(() =>
+    getStored('referrals', INITIAL_REFERRALS)
+  );
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() =>
+    getStored('notifications', INITIAL_NOTIFICATIONS)
+  );
+
+  // WhatsApp & Extended Financial States
+  const [cashbackItems, setCashbackItems] = useState<CashbackItem[]>(() =>
+    getStored('cashback_items', INITIAL_CASHBACK_ITEMS)
+  );
+  const [whatsAppSubmissions, setWhatsAppSubmissions] = useState<WhatsAppSubmission[]>(() =>
+    getStored('wa_submissions', [
+      {
+        id: 'sub_01',
+        date: new Date().toISOString(),
+        productName: TODAY_PRODUCT_AD.title,
+        viewCount: 35,
+        earnedAmount: 3500,
+        screenshotUrl: 'whatsapp_proof_35views.png',
+        status: 'approved'
+      }
+    ])
+  );
+  const [activeInvestments, setActiveInvestments] = useState<ActiveInvestment[]>(() =>
+    getStored('active_investments', INITIAL_ACTIVE_INVESTMENTS)
+  );
+  const [payheroConfig, setPayheroConfig] = useState<PayHeroConfig>(() =>
+    getStored('payhero_config', INITIAL_PAYHERO_CONFIG)
+  );
+
+  // Dark / Light Mode State (Defaults to true matching EarnWave dark design)
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() =>
+    getStored('dark_mode', true)
+  );
+
+  // Mobile sidebar state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Currency State (KES / USD)
+  const [currency, setCurrency] = useState<'KES' | 'USD'>('KES');
+
+  // Admin verification state for sandbox testing
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+
+  // Modal States
+  const [isDepositOpen, setIsDepositOpen] = useState(false);
+  const [isActivationMode, setIsActivationMode] = useState(false);
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
+  const [selectedTaskForExec, setSelectedTaskForExec] = useState<EarningTask | null>(null);
+  const [selectedReceiptTx, setSelectedReceiptTx] = useState<Transaction | null>(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  // Sync to local storage
+  useEffect(() => {
+    setStored('users', users);
+  }, [users]);
+
+  useEffect(() => {
+    if (currentUser) {
+      setStored('current_user', currentUser);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    setStored('tasks', tasks);
+  }, [tasks]);
+
+  useEffect(() => {
+    setStored('transactions', transactions);
+  }, [transactions]);
+
+  useEffect(() => {
+    setStored('referrals', referrals);
+  }, [referrals]);
+
+  useEffect(() => {
+    setStored('notifications', notifications);
+  }, [notifications]);
+
+  useEffect(() => {
+    setStored('cashback_items', cashbackItems);
+  }, [cashbackItems]);
+
+  useEffect(() => {
+    setStored('wa_submissions', whatsAppSubmissions);
+  }, [whatsAppSubmissions]);
+
+  useEffect(() => {
+    setStored('active_investments', activeInvestments);
+  }, [activeInvestments]);
+
+  useEffect(() => {
+    setStored('payhero_config', payheroConfig);
+  }, [payheroConfig]);
+
+  useEffect(() => {
+    setStored('dark_mode', isDarkMode);
+  }, [isDarkMode]);
+
+  // Handle Login
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    if (user.role === 'admin') {
+      setAdminUnlocked(true);
+      setCurrentView('adminDashboardView');
+    } else {
+      setCurrentView('userDashboardView');
+    }
+  };
+
+  // Handle Register
+  const handleRegister = (newUser: User) => {
+    setUsers((prev) => [newUser, ...prev]);
+  };
+
+  // Handle Logout
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setStored('current_user', null);
+    setCurrentView('userDashboardView');
+  };
+
+  // Helper to generate Safaricom receipt
+  const generateReceipt = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789';
+    let code = 'QK';
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
+
+  // Helper trigger confetti
+  const fireConfetti = () => {
+    try {
+      confetti({
+        particleCount: 100,
+        spread: 75,
+        origin: { y: 0.5 },
+        colors: ['#10b981', '#f59e0b', '#3b82f6', '#ffffff']
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  // ==========================================
+  // WHATSAPP PACKAGE PURCHASE
+  // ==========================================
+  const handlePurchaseWhatsAppPackage = (pkg: WhatsAppPackageItem) => {
+    if (!currentUser) return;
+
+    const receipt = generateReceipt();
+    const newTx: Transaction = {
+      id: `tx_wa_pkg_${Date.now()}`,
+      mpesaReceiptNo: receipt,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'whatsapp_package',
+      amount: pkg.price,
+      fee: 0,
+      netAmount: pkg.price,
+      status: 'completed',
+      description: `Activated ${pkg.name} (KES ${(pkg.cashbackBonus || 0).toLocaleString()} Cashback Credited)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const newCashbackItem: CashbackItem = {
+      id: `cb_${Date.now()}`,
+      sourcePackageName: pkg.name,
+      packagePrice: pkg.price,
+      cashbackAmount: pkg.cashbackBonus,
+      unlockFeeRequired: Math.round(pkg.price * 0.4), // 40% of package bought
+      status: 'pending_unlock',
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [newTx, ...prev]);
+    setCashbackItems((prev) => [newCashbackItem, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      activeWhatsAppPackage: pkg.id,
+      pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    // Notification
+    const newNotif: NotificationItem = {
+      id: `notif_${Date.now()}`,
+      title: `${pkg.name} Activated!`,
+      message: `Receipt ${receipt}. KES ${(pkg.cashbackBonus || 0).toLocaleString()} Cashback Bonus has been credited to your Cashback Vault (Pay 40% fee to unlock).`,
+      time: 'Just now',
+      isRead: false,
+      type: 'money',
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+
+    fireConfetti();
+    setCurrentView('cashbackBonusView');
+  };
+
+  // ==========================================
+  // CASHBACK BONUS 40% FEE CLEARANCE & CLAIM
+  // ==========================================
+  const handleClaimCashback = (item: CashbackItem) => {
+    if (!currentUser) return;
+
+    const receiptFee = generateReceipt();
+    const receiptBonus = generateReceipt();
+
+    // 1. Fee Transaction (40% payment)
+    const feeTx: Transaction = {
+      id: `tx_cb_fee_${Date.now()}`,
+      mpesaReceiptNo: receiptFee,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'cashback_fee',
+      amount: item.unlockFeeRequired,
+      fee: 0,
+      netAmount: item.unlockFeeRequired,
+      status: 'completed',
+      description: `40% Clearance Fee for ${item.sourcePackageName} Cashback`,
+      createdAt: new Date().toISOString(),
+    };
+
+    // 2. Bonus Credit Transaction
+    const bonusTx: Transaction = {
+      id: `tx_cb_payout_${Date.now()}`,
+      mpesaReceiptNo: receiptBonus,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'cashback_claim',
+      amount: item.cashbackAmount,
+      fee: 0,
+      netAmount: item.cashbackAmount,
+      status: 'completed',
+      description: `Disbursed 200% Cashback Bonus (${item.sourcePackageName})`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [bonusTx, feeTx, ...prev]);
+    setCashbackItems((prev) =>
+      prev.map((cb) =>
+        cb.id === item.id ? { ...cb, status: 'unlocked', unlockedAt: new Date().toISOString() } : cb
+      )
+    );
+
+    const updatedUser: User = {
+      ...currentUser,
+      balance: currentUser.balance + item.cashbackAmount,
+      totalEarned: currentUser.totalEarned + item.cashbackAmount,
+      pendingCashbackTotal: Math.max(0, currentUser.pendingCashbackTotal - item.cashbackAmount),
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    const newNotif: NotificationItem = {
+      id: `notif_${Date.now()}`,
+      title: 'Cashback Bonus Unlocked!',
+      message: `+KES ${(item.cashbackAmount || 0).toLocaleString()} credited to your spendable balance via M-Pesa receipt ${receiptBonus}.`,
+      time: 'Just now',
+      isRead: false,
+      type: 'money',
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+
+    fireConfetti();
+  };
+
+  const handleClaimAllCashback = () => {
+    const pending = cashbackItems.filter((i) => i.status === 'pending_unlock');
+    if (pending.length === 0 || !currentUser) return;
+
+    let totalBonus = 0;
+    const newTxs: Transaction[] = [];
+
+    pending.forEach((item) => {
+      totalBonus += item.cashbackAmount;
+      newTxs.push({
+        id: `tx_cb_all_${Date.now()}_${item.id}`,
+        mpesaReceiptNo: generateReceipt(),
+        userId: currentUser.id,
+        userName: `${currentUser.firstName} ${currentUser.lastName}`,
+        userPhone: currentUser.phone,
+        type: 'cashback_claim',
+        amount: item.cashbackAmount,
+        fee: 0,
+        netAmount: item.cashbackAmount,
+        status: 'completed',
+        description: `Batch Unlocked Cashback: ${item.sourcePackageName}`,
+        createdAt: new Date().toISOString(),
+      });
+    });
+
+    setTransactions((prev) => [...newTxs, ...prev]);
+    setCashbackItems((prev) =>
+      prev.map((cb) => ({ ...cb, status: 'unlocked', unlockedAt: new Date().toISOString() }))
+    );
+
+    const updatedUser: User = {
+      ...currentUser,
+      balance: currentUser.balance + totalBonus,
+      totalEarned: currentUser.totalEarned + totalBonus,
+      pendingCashbackTotal: 0,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    fireConfetti();
+  };
+
+  // ==========================================
+  // WHATSAPP STATUS VIEWS SUBMISSION (1 View = KES 100)
+  // ==========================================
+  const handleSubmitWhatsAppViews = (viewCount: number, screenshotName: string) => {
+    if (!currentUser) return;
+
+    const earned = viewCount * 100;
+    const newSubmission: WhatsAppSubmission = {
+      id: `sub_${Date.now()}`,
+      date: new Date().toISOString(),
+      productName: TODAY_PRODUCT_AD.title,
+      viewCount: viewCount,
+      earnedAmount: earned,
+      screenshotUrl: screenshotName,
+      status: 'approved',
+    };
+
+    const viewTx: Transaction = {
+      id: `tx_views_${Date.now()}`,
+      mpesaReceiptNo: generateReceipt(),
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'whatsapp_views_earning',
+      amount: earned,
+      fee: 0,
+      netAmount: earned,
+      status: 'completed',
+      description: `WhatsApp Status Broadcast (${viewCount} Views @ KES 100/view)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setWhatsAppSubmissions((prev) => [newSubmission, ...prev]);
+    setTransactions((prev) => [viewTx, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      whatsappBalance: currentUser.whatsappBalance + earned,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    fireConfetti();
+  };
+
+  // ==========================================
+  // DISBURSE WHATSAPP EARNINGS (After 4 Pipeline Steps)
+  // ==========================================
+  const handleDisburseWhatsAppEarnings = () => {
+    if (!currentUser) return;
+    const amountToDisburse = currentUser.whatsappBalance;
+    if (amountToDisburse <= 0) return;
+
+    const receipt = generateReceipt();
+    const disburseTx: Transaction = {
+      id: `tx_disburse_wa_${Date.now()}`,
+      mpesaReceiptNo: receipt,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'withdrawal',
+      amount: amountToDisburse,
+      fee: 0,
+      netAmount: amountToDisburse,
+      status: 'completed',
+      description: `Direct Pipeline B2C Disbursal of WhatsApp View Earnings to Main Balance`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [disburseTx, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      balance: currentUser.balance + amountToDisburse,
+      totalEarned: currentUser.totalEarned + amountToDisburse,
+      whatsappBalance: 0,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    const newNotif: NotificationItem = {
+      id: `notif_${Date.now()}`,
+      title: 'WhatsApp Earnings Disbursed!',
+      message: `KES ${(amountToDisburse || 0).toLocaleString()} moved to your spendable M-Pesa balance via receipt ${receipt}.`,
+      time: 'Just now',
+      isRead: false,
+      type: 'money',
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+
+    fireConfetti();
+  };
+
+  // ==========================================
+  // 4 PIPELINE SEQUENTIAL PACKAGE ACTIVATIONS
+  // ==========================================
+
+  // Step 1: Authorize Package (5,000 -> Cashback 10,000)
+  const handleActivateAuthorizePackage = () => {
+    if (!currentUser) return;
+    const pkg = PIPELINE_PACKAGES.authorize;
+    const receipt = generateReceipt();
+
+    const authTx: Transaction = {
+      id: `tx_auth_${Date.now()}`,
+      mpesaReceiptNo: receipt,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'authorize_package',
+      amount: pkg.price,
+      fee: 0,
+      netAmount: pkg.price,
+      status: 'completed',
+      description: `Activated ${pkg.name} (Step 1/4 Cleared + KES 10,000 Cashback)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const newCashbackItem: CashbackItem = {
+      id: `cb_auth_${Date.now()}`,
+      sourcePackageName: pkg.name,
+      packagePrice: pkg.price,
+      cashbackAmount: pkg.cashbackBonus,
+      unlockFeeRequired: Math.round(pkg.price * 0.4), // KES 2,000
+      status: 'pending_unlock',
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [authTx, ...prev]);
+    setCashbackItems((prev) => [newCashbackItem, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      isAuthorizedPackagePurchased: true,
+      pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    fireConfetti();
+  };
+
+  // Step 2: Unlock To MPESA (7,000 -> Cashback 14,000)
+  const handleActivateUnlockMpesa = () => {
+    if (!currentUser) return;
+    const pkg = PIPELINE_PACKAGES.unlockMpesa;
+    const receipt = generateReceipt();
+
+    const unlockTx: Transaction = {
+      id: `tx_unlock_mpesa_${Date.now()}`,
+      mpesaReceiptNo: receipt,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'unlock_mpesa',
+      amount: pkg.price,
+      fee: 0,
+      netAmount: pkg.price,
+      status: 'completed',
+      description: `Activated ${pkg.name} (Step 2/4 Cleared + KES 14,000 Cashback)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const newCashbackItem: CashbackItem = {
+      id: `cb_unlock_${Date.now()}`,
+      sourcePackageName: pkg.name,
+      packagePrice: pkg.price,
+      cashbackAmount: pkg.cashbackBonus,
+      unlockFeeRequired: Math.round(pkg.price * 0.4), // KES 2,800
+      status: 'pending_unlock',
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [unlockTx, ...prev]);
+    setCashbackItems((prev) => [newCashbackItem, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      isUnlockMpesaPurchased: true,
+      pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    fireConfetti();
+  };
+
+  // Step 3: Automation Package (KES 2,500 -> Cashback 5,000)
+  const handleActivateAutomationPackage = () => {
+    if (!currentUser) return;
+    const pkg = PIPELINE_PACKAGES.automation;
+    const receipt = generateReceipt();
+
+    const autoTx: Transaction = {
+      id: `tx_automation_${Date.now()}`,
+      mpesaReceiptNo: receipt,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'automation_package',
+      amount: pkg.price,
+      fee: 0,
+      netAmount: pkg.price,
+      status: 'completed',
+      description: `Activated ${pkg.name} (+ KES ${(pkg.cashbackBonus).toLocaleString()} Cashback)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const newCashbackItem: CashbackItem = {
+      id: `cb_auto_${Date.now()}`,
+      sourcePackageName: pkg.name,
+      packagePrice: pkg.price,
+      cashbackAmount: pkg.cashbackBonus,
+      unlockFeeRequired: Math.round(pkg.cashbackBonus * 0.4), // 40% of cashback = 2,000
+      status: 'pending_unlock',
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [autoTx, ...prev]);
+    setCashbackItems((prev) => [newCashbackItem, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      isAutomationPackagePurchased: true,
+      pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    fireConfetti();
+  };
+
+  // Step 4: Verified Agent (KES 5,000 -> Cashback 10,000)
+  const handleActivateVerifiedAgent = () => {
+    if (!currentUser) return;
+    const pkg = PIPELINE_PACKAGES.verifiedAgent;
+    const receipt = generateReceipt();
+
+    const agentTx: Transaction = {
+      id: `tx_agent_${Date.now()}`,
+      mpesaReceiptNo: receipt,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'verified_agent',
+      amount: pkg.price,
+      fee: 0,
+      netAmount: pkg.price,
+      status: 'completed',
+      description: `Activated ${pkg.name} (+ KES ${(pkg.cashbackBonus).toLocaleString()} Cashback)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const newCashbackItem: CashbackItem = {
+      id: `cb_agent_${Date.now()}`,
+      sourcePackageName: pkg.name,
+      packagePrice: pkg.price,
+      cashbackAmount: pkg.cashbackBonus,
+      unlockFeeRequired: Math.round(pkg.cashbackBonus * 0.4), // 40% of cashback = 4,000
+      status: 'pending_unlock',
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [agentTx, ...prev]);
+    setCashbackItems((prev) => [newCashbackItem, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      role: 'verified_agent',
+      isVerifiedAgentPurchased: true,
+      pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    fireConfetti();
+  };
+
+  // Step 5: Universe Package (KES 7,000 -> Cashback 14,000)
+  const handleActivateUniversePackage = () => {
+    if (!currentUser) return;
+    const pkg = PIPELINE_PACKAGES.universe;
+    const receipt = generateReceipt();
+
+    const universeTx: Transaction = {
+      id: `tx_universe_${Date.now()}`,
+      mpesaReceiptNo: receipt,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'universe_package',
+      amount: pkg.price,
+      fee: 0,
+      netAmount: pkg.price,
+      status: 'completed',
+      description: `Activated ${pkg.name} (+ KES ${(pkg.cashbackBonus).toLocaleString()} Cashback)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const newCashbackItem: CashbackItem = {
+      id: `cb_universe_${Date.now()}`,
+      sourcePackageName: pkg.name,
+      packagePrice: pkg.price,
+      cashbackAmount: pkg.cashbackBonus,
+      unlockFeeRequired: Math.round(pkg.cashbackBonus * 0.4), // 40% of cashback = 5,600
+      status: 'pending_unlock',
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [universeTx, ...prev]);
+    setCashbackItems((prev) => [newCashbackItem, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      isUniversePackagePurchased: true,
+      pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    fireConfetti();
+  };
+
+  // ==========================================
+  // INVESTMENT PLANS (Starting 1,500, up to 300% monthly)
+  // ==========================================
+  const handleInvestInPlan = (plan: InvestmentPlan, customAmount?: number) => {
+    if (!currentUser) return;
+    const amount = customAmount || plan.minDeposit;
+    const receipt = generateReceipt();
+
+    const invTx: Transaction = {
+      id: `tx_inv_${Date.now()}`,
+      mpesaReceiptNo: receipt,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'investment_deposit',
+      amount: amount,
+      fee: 0,
+      netAmount: amount,
+      status: 'completed',
+      description: `Subscribed to ${plan.name} (300% Monthly Yield Contract)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    const expectedTotal = amount * 4; // 100% Principal + 300% Return = 400% total payout
+
+    const newInvestment: ActiveInvestment = {
+      id: `act_inv_${Date.now()}`,
+      planId: plan.id,
+      planName: plan.name,
+      amountInvested: amount,
+      expectedTotalPayout: expectedTotal,
+      currentEarned: Math.round(amount * 0.1), // instant day 1 yield
+      progressPercent: 4,
+      startDate: new Date().toISOString(),
+      maturityDate: new Date(Date.now() + 30 * 86400000).toISOString(),
+      status: 'active',
+    };
+
+    setTransactions((prev) => [invTx, ...prev]);
+    setActiveInvestments((prev) => [newInvestment, ...prev]);
+
+    const newNotif: NotificationItem = {
+      id: `notif_${Date.now()}`,
+      title: 'Investment Plan Active!',
+      message: `KES ${(amount || 0).toLocaleString()} deployed in ${plan.name}. Expected ROI: KES ${(expectedTotal || 0).toLocaleString()} (300% Profit).`,
+      time: 'Just now',
+      isRead: false,
+      type: 'money',
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+
+    fireConfetti();
+  };
+
+  const handleHarvestYield = (investmentId: string) => {
+    const target = activeInvestments.find((i) => i.id === investmentId);
+    if (!target || !currentUser || target.currentEarned <= 0) return;
+
+    const receipt = generateReceipt();
+    const yieldAmount = target.currentEarned;
+
+    const yieldTx: Transaction = {
+      id: `tx_yield_${Date.now()}`,
+      mpesaReceiptNo: receipt,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'investment_yield',
+      amount: yieldAmount,
+      fee: 0,
+      netAmount: yieldAmount,
+      status: 'completed',
+      description: `Harvested Yield from ${target.planName}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [yieldTx, ...prev]);
+    setActiveInvestments((prev) =>
+      prev.map((inv) =>
+        inv.id === investmentId ? { ...inv, currentEarned: 0 } : inv
+      )
+    );
+
+    const updatedUser: User = {
+      ...currentUser,
+      balance: currentUser.balance + yieldAmount,
+      totalEarned: currentUser.totalEarned + yieldAmount,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    fireConfetti();
+  };
+
+  // Handle Deposit / Activation Success
+  const handleDepositSuccess = (amount: number, newTx: Transaction) => {
+    if (!currentUser) return;
+
+    if (newTx.type === 'activation_fee') {
+      const updatedUser: User = {
+        ...currentUser,
+        isActivated: true,
+        tier: 'Standard',
+        spinsRemaining: currentUser.spinsRemaining + 2,
+      };
+      setCurrentUser(updatedUser);
+      setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+    } else {
+      const updatedUser: User = {
+        ...currentUser,
+        balance: currentUser.balance + amount,
+        totalEarned: currentUser.totalEarned + amount,
+      };
+      setCurrentUser(updatedUser);
+      setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+    }
+
+    setTransactions((prev) => [newTx, ...prev]);
+
+    const newNotif: NotificationItem = {
+      id: `notif_${Date.now()}`,
+      title: newTx.type === 'activation_fee' ? 'Account Activated!' : 'M-Pesa Deposit Received',
+      message: `KES ${(amount || 0).toLocaleString()} processed via ${newTx.mpesaReceiptNo}.`,
+      time: 'Just now',
+      isRead: false,
+      type: 'money',
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+  };
+
+  // Handle Withdrawal Request Success
+  const handleWithdrawalSuccess = (amount: number, fee: number, newTx: Transaction) => {
+    if (!currentUser) return;
+
+    const isInstant = newTx.status === 'completed';
+    const totalDeducted = amount + fee;
+
+    const updatedUser: User = {
+      ...currentUser,
+      balance: Math.max(0, currentUser.balance - totalDeducted),
+      totalWithdrawn: currentUser.totalWithdrawn + (isInstant ? amount : 0),
+      pendingBalance: currentUser.pendingBalance + (isInstant ? 0 : amount),
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+    setTransactions((prev) => [newTx, ...prev]);
+
+    const newNotif: NotificationItem = {
+      id: `notif_${Date.now()}`,
+      title: isInstant ? 'M-Pesa Cashout Sent!' : 'Withdrawal Request Queued',
+      message: isInstant
+        ? `KES ${(amount || 0).toLocaleString()} dispatched to ${newTx.userPhone} via M-Pesa (${newTx.mpesaReceiptNo}).`
+        : `KES ${(amount || 0).toLocaleString()} submitted for admin B2C batch release.`,
+      time: 'Just now',
+      isRead: false,
+      type: 'money',
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+  };
+
+  // Handle Task Completion
+  const handleTaskCompletion = (taskId: string, reward: number) => {
+    if (!currentUser) return;
+
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, isCompleted: true } : t))
+    );
+
+    const multiplier =
+      currentUser.tier === 'Platinum'
+        ? 2.2
+        : currentUser.tier === 'Gold'
+        ? 1.6
+        : currentUser.tier === 'Silver'
+        ? 1.25
+        : 1.0;
+
+    const finalReward = Math.round(reward * multiplier);
+    const receiptCode = generateReceipt();
+
+    const taskTx: Transaction = {
+      id: `tx_task_${Date.now()}`,
+      mpesaReceiptNo: receiptCode,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'task_reward',
+      amount: finalReward,
+      fee: 0,
+      netAmount: finalReward,
+      status: 'completed',
+      description: `Daily Micro-Task Completion Reward (${multiplier}x Tier Rate)`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [taskTx, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      balance: currentUser.balance + finalReward,
+      totalEarned: currentUser.totalEarned + finalReward,
+      tasksCompletedToday: currentUser.tasksCompletedToday + 1,
+    };
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    setSelectedTaskForExec(null);
+
+    const newNotif: NotificationItem = {
+      id: `notif_${Date.now()}`,
+      title: 'Task Reward Credited!',
+      message: `+KES ${finalReward} added to balance for task completion.`,
+      time: 'Just now',
+      isRead: false,
+      type: 'task',
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+  };
+
+  // Handle Spin Win
+  const handleSpinWin = (rewardAmount: number, winTx?: Transaction) => {
+    if (!currentUser) return;
+
+    if (rewardAmount > 0 && winTx) {
+      setTransactions((prev) => [winTx, ...prev]);
+    }
+
+    const updatedUser: User = {
+      ...currentUser,
+      spinsRemaining: Math.max(0, currentUser.spinsRemaining - 1),
+      balance: currentUser.balance + rewardAmount,
+      totalEarned: currentUser.totalEarned + rewardAmount,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    if (rewardAmount > 0) {
+      const newNotif: NotificationItem = {
+        id: `notif_${Date.now()}`,
+        title: 'Lucky Spin Cash Win!',
+        message: `+KES ${rewardAmount} won on the Eneza Spin Wheel!`,
+        time: 'Just now',
+        isRead: false,
+        type: 'money',
+      };
+      setNotifications((prev) => [newNotif, ...prev]);
+    }
+  };
+
+  // Handle Tier Upgrade
+  const handleTierUpgrade = (pkg: VipPackage) => {
+    if (!currentUser) return;
+
+    if (pkg.price > currentUser.balance) {
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+      return;
+    }
+
+    const receiptCode = generateReceipt();
+
+    const upgradeTx: Transaction = {
+      id: `tx_upg_${Date.now()}`,
+      mpesaReceiptNo: receiptCode,
+      userId: currentUser.id,
+      userName: `${currentUser.firstName} ${currentUser.lastName}`,
+      userPhone: currentUser.phone,
+      type: 'tier_upgrade',
+      amount: pkg.price,
+      fee: 0,
+      netAmount: pkg.price,
+      status: 'completed',
+      description: `VIP Tier Upgrade to ${pkg.name}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setTransactions((prev) => [upgradeTx, ...prev]);
+
+    const updatedUser: User = {
+      ...currentUser,
+      tier: pkg.name,
+      balance: currentUser.balance - pkg.price,
+      spinsRemaining: currentUser.spinsRemaining + pkg.tasksLimit,
+      maxTasksPerDay: pkg.tasksLimit,
+    };
+
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
+    fireConfetti();
+    alert(`🎉 Congratulations! You have successfully upgraded to the ${pkg.name} Tier!`);
+  };
+
+  // Admin Actions
+  const handleAdminApproveWithdrawal = (txId: string) => {
+    const targetTx = transactions.find((t) => t.id === txId);
+    if (!targetTx) return;
+
+    setTransactions((prev) =>
+      prev.map((t) => (t.id === txId ? { ...t, status: 'completed', approvedBy: 'Root Admin' } : t))
+    );
+
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === targetTx.userId) {
+          return {
+            ...u,
+            pendingBalance: Math.max(0, u.pendingBalance - targetTx.amount),
+            totalWithdrawn: u.totalWithdrawn + targetTx.amount,
+          };
+        }
+        return u;
+      })
+    );
+
+    if (currentUser && currentUser.id === targetTx.userId) {
+      setCurrentUser({
+        ...currentUser,
+        pendingBalance: Math.max(0, currentUser.pendingBalance - targetTx.amount),
+        totalWithdrawn: currentUser.totalWithdrawn + targetTx.amount,
+      });
+    }
+
+    alert(`Disbursal approved for ${targetTx.userName} (KES ${(targetTx.amount || 0).toLocaleString()}) via M-Pesa B2C.`);
+  };
+
+  const handleAdminRejectWithdrawal = (txId: string, reason: string) => {
+    const targetTx = transactions.find((t) => t.id === txId);
+    if (!targetTx) return;
+
+    setTransactions((prev) =>
+      prev.map((t) => (t.id === txId ? { ...t, status: 'rejected', notes: reason } : t))
+    );
+
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === targetTx.userId) {
+          return {
+            ...u,
+            pendingBalance: Math.max(0, u.pendingBalance - targetTx.amount),
+            balance: u.balance + targetTx.amount + targetTx.fee,
+          };
+        }
+        return u;
+      })
+    );
+
+    if (currentUser && currentUser.id === targetTx.userId) {
+      setCurrentUser({
+        ...currentUser,
+        pendingBalance: Math.max(0, currentUser.pendingBalance - targetTx.amount),
+        balance: currentUser.balance + targetTx.amount + targetTx.fee,
+      });
+    }
+
+    alert(`Withdrawal rejected. Funds have been refunded to the member balance.`);
+  };
+
+  const handleAdminUpdateUserBalance = (userId: string, deltaAmount: number) => {
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === userId) {
+          const updated = {
+            ...u,
+            balance: Math.max(0, u.balance + deltaAmount),
+            totalEarned: deltaAmount > 0 ? u.totalEarned + deltaAmount : u.totalEarned,
+          };
+          if (currentUser?.id === userId) {
+            setCurrentUser(updated);
+          }
+          return updated;
+        }
+        return u;
+      })
+    );
+    alert(`Adjusted user balance by KES ${deltaAmount > 0 ? '+' : ''}${deltaAmount}`);
+  };
+
+  const handleAdminUpdateUserTier = (userId: string, newTier: TierLevel) => {
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === userId) {
+          const updated = { ...u, tier: newTier };
+          if (currentUser?.id === userId) {
+            setCurrentUser(updated);
+          }
+          return updated;
+        }
+        return u;
+      })
+    );
+  };
+
+  const handleAdminCreateTask = (newTask: EarningTask) => {
+    setTasks((prev) => [newTask, ...prev]);
+  };
+
+  const handleAdminBroadcast = (title: string, message: string) => {
+    const newNotif: NotificationItem = {
+      id: `notif_bcast_${Date.now()}`,
+      title: title,
+      message: message,
+      time: 'Just now',
+      isRead: false,
+      type: 'alert',
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
+  };
+
+  // If no user is logged in, show Auth Module
+  if (!currentUser) {
+    return (
+      <>
+        <FloatingToast />
+        <AuthModule
+          onLogin={handleLogin}
+          registeredUsers={users}
+          onRegister={handleRegister}
+        />
+      </>
+    );
+  }
+
+  const unreadNotifsCount = notifications.filter((n) => !n.isRead).length;
+  const pendingTasksCount = tasks.filter((t) => !t.isCompleted).length;
+  const pendingCashbackCount = cashbackItems.filter((i) => i.status === 'pending_unlock').length;
+
+  return (
+    <div
+      className={`h-full min-h-screen ${
+        isDarkMode
+          ? 'bg-[#070e1b] text-zinc-100'
+          : 'bg-gradient-to-br from-[#fdebee] via-[#eaf4f7] to-[#e4eef6] text-slate-900'
+      } selection:bg-rose-500/20 selection:text-rose-500 font-sans flex transition-colors duration-200`}
+    >
+      {/* 0. LIVE FLOATING TESTIMONIAL NOTIFICATION */}
+      <FloatingToast />
+
+      {/* 1. SIDEBAR MENU NAVIGATION */}
+      <Sidebar
+        currentView={currentView}
+        onSelectView={(v) => setCurrentView(v)}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        isOpenMobile={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        pendingTasksCount={pendingTasksCount}
+        pendingCashbackCount={pendingCashbackCount}
+        adminVerificationUnlocked={adminUnlocked}
+        onToggleAdminVerification={() => {
+          setAdminUnlocked(true);
+          alert('Admin node verified and unlocked in your navigation sidebar!');
+        }}
+        onOpenDeposit={() => {
+          setIsActivationMode(false);
+          setIsDepositOpen(true);
+        }}
+        onOpenWithdraw={() => setIsWithdrawOpen(true)}
+        isDarkMode={isDarkMode}
+      />
+
+      {/* 2. MAIN APPLICATION CONTENT WRAPPER */}
+      <div className="flex-1 flex flex-col md:pl-72 min-h-screen overflow-x-hidden">
+        {/* Sticky Top Header */}
+        <TopHeader
+          currentUser={currentUser}
+          onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
+          onOpenDeposit={() => {
+            setIsActivationMode(false);
+            setIsDepositOpen(true);
+          }}
+          onOpenWithdraw={() => setIsWithdrawOpen(true)}
+          onOpenNotifications={() => setIsNotificationsOpen(true)}
+          unreadCount={unreadNotifsCount}
+          onSwitchView={(v) => setCurrentView(v)}
+          currency={currency}
+          onToggleCurrency={() => setCurrency((prev) => (prev === 'KES' ? 'USD' : 'KES'))}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={() => setIsDarkMode((prev) => !prev)}
+        />
+
+        {/* View Dynamic Router Container */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-16">
+          {/* Main Dashboard */}
+          {currentView === 'userDashboardView' && (
+            <UserDashboard
+              user={currentUser}
+              tasks={tasks}
+              transactions={transactions}
+              onSwitchView={(v) => setCurrentView(v)}
+              onOpenDeposit={() => {
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
+              onOpenWithdraw={() => setIsWithdrawOpen(true)}
+              onSelectTask={(t) => setSelectedTaskForExec(t)}
+              onActivateAccount={() => {
+                setIsActivationMode(true);
+                setIsDepositOpen(true);
+              }}
+              isDarkMode={isDarkMode}
+            />
+          )}
+
+          {/* WhatsApp Packages */}
+          {currentView === 'whatsappPackagesView' && (
+            <WhatsAppPackagesView
+              currentUser={currentUser}
+              onPurchasePackage={handlePurchaseWhatsAppPackage}
+              onSelectPackage={handlePurchaseWhatsAppPackage}
+              onSwitchView={(v) => setCurrentView(v)}
+            />
+          )}
+
+          {/* Cashback Bonus Tab */}
+          {currentView === 'cashbackBonusView' && (
+            <CashbackBonusView
+              currentUser={currentUser}
+              cashbackItems={cashbackItems}
+              onClaimCashback={handleClaimCashback}
+              onClaimAllCashback={handleClaimAllCashback}
+              onSwitchView={(v) => setCurrentView(v)}
+            />
+          )}
+
+          {/* WhatsApp Status Earnings (1 View = KES 100) */}
+          {currentView === 'whatsappEarningsView' && (
+            <WhatsAppEarningsView
+              currentUser={currentUser}
+              submissions={whatsAppSubmissions}
+              onSubmitViews={handleSubmitWhatsAppViews}
+              onDisburseEarnings={handleDisburseWhatsAppEarnings}
+              onSwitchView={(v) => setCurrentView(v)}
+            />
+          )}
+
+          {/* Sequential Pipeline Step 1: Authorize Package */}
+          {currentView === 'authorizePackageView' && (
+            <AuthorizePackageView
+              currentUser={currentUser}
+              onActivateAuthorize={handleActivateAuthorizePackage}
+              onSwitchView={(v) => setCurrentView(v)}
+            />
+          )}
+
+          {/* Sequential Pipeline Step 2: Unlock To MPESA */}
+          {currentView === 'unlockMpesaView' && (
+            <UnlockMpesaView
+              currentUser={currentUser}
+              onActivateUnlockMpesa={handleActivateUnlockMpesa}
+              onSwitchView={(v) => setCurrentView(v)}
+            />
+          )}
+
+          {/* Sequential Pipeline Step 3: Automation Package */}
+          {currentView === 'automationPackageView' && (
+            <AutomationPackageView
+              currentUser={currentUser}
+              onActivateAutomation={handleActivateAutomationPackage}
+              onSwitchView={(v) => setCurrentView(v)}
+            />
+          )}
+
+          {/* Sequential Pipeline Step 4: Verified Agent */}
+          {currentView === 'verifiedAgentView' && (
+            <VerifiedAgentView
+              currentUser={currentUser}
+              onActivateVerifiedAgent={handleActivateVerifiedAgent}
+              onSwitchView={(v) => setCurrentView(v)}
+            />
+          )}
+
+          {/* Sequential Pipeline Step 5: Universe Package */}
+          {currentView === 'universePackageView' && (
+            <UniversePackageView
+              currentUser={currentUser}
+              onActivateUniverse={handleActivateUniversePackage}
+              onSwitchView={(v) => setCurrentView(v)}
+            />
+          )}
+
+          {/* Investment Plans (Up to 300% Monthly) */}
+          {currentView === 'investmentPlansView' && (
+            <InvestmentPlansView
+              currentUser={currentUser}
+              activeInvestments={activeInvestments}
+              onInvest={handleInvestInPlan}
+              onHarvestYield={handleHarvestYield}
+              onSwitchView={(v) => setCurrentView(v)}
+            />
+          )}
+
+          {/* Daily Tasks */}
+          {currentView === 'tasksView' && (
+            <TasksView
+              tasks={tasks}
+              user={currentUser}
+              onSelectTask={(t) => setSelectedTaskForExec(t)}
+            />
+          )}
+
+          {/* Lucky Spin Wheel */}
+          {currentView === 'spinWheelView' && (
+            <SpinWheelView
+              user={currentUser}
+              onSpinWin={handleSpinWin}
+              onBuySpins={() => {
+                setCurrentView('whatsappPackagesView');
+              }}
+            />
+          )}
+
+          {/* Referral Network */}
+          {currentView === 'referralsView' && (
+            <ReferralsView user={currentUser} referrals={referrals} />
+          )}
+
+          {/* Cashier View */}
+          {currentView === 'cashierView' && (
+            <CashierView
+              user={currentUser}
+              transactions={transactions}
+              onOpenDeposit={() => {
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
+              onOpenWithdraw={() => setIsWithdrawOpen(true)}
+              onViewReceipt={(tx) => setSelectedReceiptTx(tx)}
+            />
+          )}
+
+          {/* Transaction Ledger */}
+          {currentView === 'ledgerView' && (
+            <LedgerView
+              transactions={transactions}
+              onViewReceipt={(tx) => setSelectedReceiptTx(tx)}
+            />
+          )}
+
+          {/* Admin Dashboard */}
+          {currentView === 'adminDashboardView' && (
+            <AdminDashboard
+              users={users}
+              transactions={transactions}
+              tasks={tasks}
+              onApproveWithdrawal={handleAdminApproveWithdrawal}
+              onRejectWithdrawal={handleAdminRejectWithdrawal}
+              onUpdateUserBalance={handleAdminUpdateUserBalance}
+              onUpdateUserTier={handleAdminUpdateUserTier}
+              onCreateTask={handleAdminCreateTask}
+              onSendBroadcastNotification={handleAdminBroadcast}
+              payheroConfig={payheroConfig}
+              onUpdatePayheroConfig={(newCfg) => {
+                setPayheroConfig(newCfg);
+                alert('PayHero & Payment Gateway configuration updated and synced!');
+              }}
+            />
+          )}
+        </main>
+      </div>
+
+      {/* ========================================== */}
+      {/* GLOBAL APPLICATION MODALS                  */}
+      {/* ========================================== */}
+
+      {/* M-Pesa Deposit / STK Push Modal */}
+      {isDepositOpen && (
+        <MpesaDepositModal
+          user={currentUser}
+          isActivation={isActivationMode}
+          onClose={() => {
+            setIsDepositOpen(false);
+            setIsActivationMode(false);
+          }}
+          onSuccess={(amt, newTx) => {
+            handleDepositSuccess(amt, newTx);
+            setIsDepositOpen(false);
+            setIsActivationMode(false);
+          }}
+        />
+      )}
+
+      {/* Withdrawal Cashout Modal */}
+      {isWithdrawOpen && (
+        <WithdrawalModal
+          user={currentUser}
+          onClose={() => setIsWithdrawOpen(false)}
+          onSuccess={(amt, fee, newTx) => {
+            handleWithdrawalSuccess(amt, fee, newTx);
+          }}
+          onNavigateToPackage={(view) => setCurrentView(view)}
+        />
+      )}
+
+      {/* Interactive Task Execution Modal */}
+      {selectedTaskForExec && (
+        <TaskExecutionModal
+          task={selectedTaskForExec}
+          user={currentUser}
+          onClose={() => setSelectedTaskForExec(null)}
+          onComplete={(taskId, reward) => handleTaskCompletion(taskId, reward)}
+        />
+      )}
+
+      {/* Official M-Pesa Receipt Modal */}
+      {selectedReceiptTx && (
+        <ReceiptModal
+          transaction={selectedReceiptTx}
+          onClose={() => setSelectedReceiptTx(null)}
+        />
+      )}
+
+      {/* Notifications Drawer */}
+      <NotificationsDrawer
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        notifications={notifications}
+        onMarkAllAsRead={() => {
+          setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+        }}
+        onClearNotifications={() => {
+          setNotifications([]);
+        }}
+      />
+    </div>
+  );
+}
+

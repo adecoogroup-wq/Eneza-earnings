@@ -1,0 +1,6 @@
+{
+  "name": "Eneza Earnings",
+  "description": "Eneza Earnings - WhatsApp status earnings, daily views monetization, instant M-Pesa payouts, and financial packages.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
