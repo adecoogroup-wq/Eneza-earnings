@@ -32,7 +32,7 @@ export const CashierView: React.FC<CashierViewProps> = ({
           <div className="md:col-span-2 space-y-2">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20">
-                Safaricom Daraja Automated Gateway
+                Verified M-Pesa Account
               </span>
             </div>
             <p className="text-xs text-zinc-400">Available Withdrawable Balance</p>

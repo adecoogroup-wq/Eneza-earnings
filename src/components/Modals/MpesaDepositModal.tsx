@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { User, Transaction } from '../../types';
-import { Smartphone, X, CheckCircle2, ShieldCheck, AlertCircle, Loader2, ArrowRight, RotateCw, PhoneCall } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { User, Transaction, PayHeroConfig } from '../../types';
+import { Smartphone, X, CheckCircle2, ShieldCheck, AlertCircle, Loader2, RotateCw, RefreshCw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface MpesaDepositModalProps {
@@ -9,6 +9,7 @@ interface MpesaDepositModalProps {
   onSuccess: (amount: number, newTx: Transaction) => void;
   defaultAmount?: number;
   isActivation?: boolean;
+  payheroConfig?: PayHeroConfig;
 }
 
 export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
@@ -17,116 +18,210 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
   onSuccess,
   defaultAmount = 500,
   isActivation = false,
+  payheroConfig,
 }) => {
   const [amount, setAmount] = useState<number>(isActivation ? 200 : defaultAmount);
   const [phone, setPhone] = useState<string>(user.phone || '0712345678');
-  const [step, setStep] = useState<'form' | 'waiting_for_payhero' | 'success' | 'failed'>('form');
-  const [countdown, setCountdown] = useState<number>(25);
+  const [step, setStep] = useState<'form' | 'waiting_for_stk' | 'success' | 'failed'>('form');
+  const [countdown, setCountdown] = useState<number>(45);
   const [generatedTx, setGeneratedTx] = useState<Transaction | null>(null);
-  const [verificationStage, setVerificationStage] = useState<number>(1);
+  const [isDispatching, setIsDispatching] = useState<boolean>(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState<boolean>(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [activeTxReference, setActiveTxReference] = useState<string>('');
+  const [failureReason, setFailureReason] = useState<string>('No completed M-Pesa transaction was received.');
+
+  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Quick amount selections
   const quickAmounts = isActivation ? [200] : [250, 500, 1000, 2500, 5000];
 
+  const cleanAndFormatPhone = (raw: string): { local: string; international: string; isValid: boolean } => {
+    const digits = raw.replace(/\s+/g, '').replace(/[-+()]/g, '');
+    let intl = digits;
+    let loc = digits;
+
+    if (digits.startsWith('254') && digits.length >= 12) {
+      intl = digits;
+      loc = '0' + digits.substring(3);
+    } else if (digits.startsWith('0') && digits.length === 10) {
+      intl = '254' + digits.substring(1);
+      loc = digits;
+    } else if (digits.length === 9 && (digits.startsWith('7') || digits.startsWith('1'))) {
+      intl = '254' + digits;
+      loc = '0' + digits;
+    }
+
+    const isValid = intl.startsWith('254') && (intl.length === 12);
+    return { local: loc, international: intl, isValid };
+  };
+
+  const completePayment = useCallback((receiptCode: string, paidAmount: number, paidPhone: string) => {
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current);
+    }
+
+    const newTx: Transaction = {
+      id: `tx_${Date.now()}`,
+      mpesaReceiptNo: receiptCode,
+      userId: user.id,
+      userName: `${user.firstName} ${user.lastName}`,
+      userPhone: paidPhone,
+      type: isActivation ? 'activation_fee' : 'deposit',
+      amount: paidAmount,
+      fee: 0,
+      netAmount: paidAmount,
+      status: 'completed',
+      description: isActivation
+        ? 'Eneza VIP Account Activation Fee'
+        : `Lipa na M-Pesa Online Deposit from ${paidPhone}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setGeneratedTx(newTx);
+    setStep('success');
+
+    try {
+      confetti({
+        particleCount: 90,
+        spread: 75,
+        origin: { y: 0.6 },
+        colors: ['#10b981', '#059669', '#34d399', '#ffffff'],
+      });
+    } catch {
+      // ignore
+    }
+
+    onSuccess(paidAmount, newTx);
+  }, [isActivation, user, onSuccess]);
+
+  // Query live payment status from backend / PayHero
+  const checkStatusWithServer = useCallback(async (reference: string, silent = false): Promise<boolean> => {
+    if (!reference) return false;
+    if (!silent) setIsCheckingStatus(true);
+
+    try {
+      const res = await fetch(`/api/mpesa/check-status?reference=${encodeURIComponent(reference)}`);
+      const data = await res.json().catch(() => null);
+
+      if (data && data.success) {
+        if (data.status === 'SUCCESS') {
+          const receipt = data.receiptCode || `QK${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+          completePayment(receipt, amount, phone);
+          return true;
+        } else if (data.status === 'FAILED') {
+          if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+          setFailureReason(data.message || 'Payment prompt was cancelled or incorrect M-Pesa PIN was entered.');
+          setStep('failed');
+          return true;
+        } else {
+          // Still QUEUED
+          if (!silent) {
+            setStatusMessage('Awaiting PIN entry on your phone. Checking PayHero in real-time...');
+            setTimeout(() => setStatusMessage(null), 3000);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('Status poll error:', err?.message);
+    } finally {
+      if (!silent) setIsCheckingStatus(false);
+    }
+
+    return false;
+  }, [amount, phone, completePayment]);
+
+  const executeStkPush = useCallback(async (targetPhone: string, targetAmount: number) => {
+    setIsDispatching(true);
+    setDispatchError(null);
+    setStatusMessage(null);
+
+    const { local } = cleanAndFormatPhone(targetPhone);
+    const clientRef = `ENEZA-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    setActiveTxReference(clientRef);
+
+    // Call server-side STK proxy endpoint
+    try {
+      const response = await fetch('/api/mpesa/stk-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: local || targetPhone,
+          amount: Number(targetAmount),
+          purpose: isActivation ? 'Account Activation' : 'Wallet Deposit',
+          reference: clientRef,
+          channelId: payheroConfig?.channelId || '678',
+          apiKey: payheroConfig?.apiKey || '',
+          apiSecret: payheroConfig?.apiSecret || '',
+          username: payheroConfig?.username || '',
+          callbackUrl: payheroConfig?.callbackUrl || '',
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+      if (data && data.reference) {
+        setActiveTxReference(data.reference);
+      }
+    } catch (e: any) {
+      console.log('STK push dispatch error:', e?.message);
+    }
+
+    setIsDispatching(false);
+    setStep('waiting_for_stk');
+    setCountdown(45);
+  }, [payheroConfig, isActivation]);
+
   const handleInitiateSTK = (e: React.FormEvent) => {
     e.preventDefault();
     if (amount < 50) {
-      alert('Minimum deposit amount is KES 50');
+      setDispatchError('Minimum deposit amount is KES 50');
       return;
     }
-    if (!phone || phone.length < 9) {
-      alert('Please enter a valid M-Pesa registered phone number');
+    const { isValid } = cleanAndFormatPhone(phone);
+    if (!isValid && phone.length < 9) {
+      setDispatchError('Please enter a valid Safaricom or Airtel phone number (e.g. 0712345678)');
       return;
     }
-    setStep('waiting_for_payhero');
-    setCountdown(25);
-    setVerificationStage(1);
+
+    executeStkPush(phone, amount);
   };
 
-  // Automated PayHero Webhook Polling Listener
+  // Real-time PayHero Polling and Countdown (strictly verifies status, fails on timeout)
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    let stageTimer1: NodeJS.Timeout;
-    let stageTimer2: NodeJS.Timeout;
-    let autoSuccessTimer: NodeJS.Timeout;
+    let countdownInterval: NodeJS.Timeout;
 
-    if (step === 'waiting_for_payhero') {
-      // Countdown
-      timer = setInterval(() => {
+    if (step === 'waiting_for_stk' && activeTxReference) {
+      // Periodic server check every 2.5 seconds
+      pollingTimerRef.current = setInterval(() => {
+        checkStatusWithServer(activeTxReference, true);
+      }, 2500);
+
+      // Countdown timer
+      countdownInterval = setInterval(() => {
         setCountdown((prev) => {
           if (prev <= 1) {
-            clearInterval(timer);
+            clearInterval(countdownInterval);
+            if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+            setFailureReason('STK prompt timed out. No M-Pesa PIN was entered on your phone.');
             setStep('failed');
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
-
-      // Automated stage progression matching PayHero webhook pipeline
-      stageTimer1 = setTimeout(() => {
-        setVerificationStage(2); // Handset prompt accepted
-      }, 2500);
-
-      stageTimer2 = setTimeout(() => {
-        setVerificationStage(3); // PayHero IPN callback received & verifying
-      }, 4800);
-
-      // Automated completion upon PayHero webhook confirmation (around 6.5s)
-      autoSuccessTimer = setTimeout(() => {
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789';
-        let receiptCode = 'QK';
-        for (let i = 0; i < 8; i++) {
-          receiptCode += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-
-        const newTx: Transaction = {
-          id: `tx_${Date.now()}`,
-          mpesaReceiptNo: receiptCode,
-          userId: user.id,
-          userName: `${user.firstName} ${user.lastName}`,
-          userPhone: phone,
-          type: isActivation ? 'activation_fee' : 'deposit',
-          amount: amount,
-          fee: 0,
-          netAmount: amount,
-          status: 'completed',
-          description: isActivation
-            ? 'Eneza VIP Account Activation Fee'
-            : `Lipa na M-Pesa Online Deposit via PayHero from ${phone}`,
-          createdAt: new Date().toISOString(),
-        };
-
-        setGeneratedTx(newTx);
-        setStep('success');
-
-        try {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-            colors: ['#10b981', '#059669', '#34d399', '#ffffff'],
-          });
-        } catch {
-          // ignore
-        }
-
-        onSuccess(amount, newTx);
-      }, 6800);
     }
 
     return () => {
-      clearInterval(timer);
-      clearTimeout(stageTimer1);
-      clearTimeout(stageTimer2);
-      clearTimeout(autoSuccessTimer);
+      if (countdownInterval) clearInterval(countdownInterval);
+      if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
     };
-  }, [step, amount, phone, isActivation, user, onSuccess]);
+  }, [step, activeTxReference, checkStatusWithServer]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl text-zinc-100 overflow-hidden">
-        {/* Glow indicator */}
+        {/* Top Accent bar */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600" />
 
         <button
@@ -146,7 +241,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
                 <h3 className="text-lg font-bold text-white">
                   {isActivation ? 'Activate Eneza Account' : 'Deposit via Lipa Na M-Pesa'}
                 </h3>
-                <p className="text-xs text-zinc-400">PayHero STK Push Prompt directly to your Phone</p>
+                <p className="text-xs text-zinc-400">Instant Lipa Na M-Pesa STK Push Prompt</p>
               </div>
             </div>
 
@@ -160,22 +255,32 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
               </div>
             )}
 
+            {dispatchError && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{dispatchError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleInitiateSTK} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">M-Pesa Registered Number</label>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">M-Pesa Registered Phone Number</label>
                 <div className="relative">
                   <input
                     type="tel"
                     required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    value={phone || ''}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      if (dispatchError) setDispatchError(null);
+                    }}
                     placeholder="07XXXXXXXX or 2547XXXXXXXX"
-                    className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-100 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-100 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
                   />
                   <span className="absolute right-3 top-2.5 text-xs text-emerald-400 font-medium">Safaricom / Airtel</span>
                 </div>
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  PayHero will trigger an instant STK prompt to this phone number.
+                  An instant M-Pesa PIN prompt will pop up on your phone.
                 </p>
               </div>
 
@@ -187,9 +292,9 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
                   min={50}
                   max={150000}
                   disabled={isActivation}
-                  value={amount}
+                  value={isNaN(amount) ? '' : amount}
                   onChange={(e) => setAmount(Number(e.target.value))}
-                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-100 text-lg font-bold focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-100 text-lg font-bold focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
                 />
               </div>
 
@@ -200,7 +305,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
                       key={qAmt}
                       type="button"
                       onClick={() => setAmount(qAmt)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium border transition cursor-pointer ${
+                      className={`px-3 py-1 rounded-lg text-xs font-medium border transition cursor-pointer font-mono ${
                         amount === qAmt
                           ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
                           : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
@@ -214,35 +319,44 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
 
               <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/80 text-xs text-zinc-400 space-y-1.5">
                 <div className="flex justify-between">
-                  <span>Payment Gateway:</span>
-                  <span className="font-mono text-zinc-200 font-bold">PayHero Direct STK Channel</span>
+                  <span>Payment Method:</span>
+                  <span className="font-mono text-zinc-200 font-semibold">Lipa Na M-Pesa Online (STK Push)</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Transaction Fee:</span>
-                  <span className="text-emerald-400 font-medium">FREE (0 KES)</span>
+                  <span className="text-emerald-400 font-semibold">FREE (0 KES)</span>
                 </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold text-white text-sm shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-2 cursor-pointer"
+                disabled={isDispatching}
+                className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-white text-sm shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                <Smartphone className="w-4 h-4" />
-                <span>Send STK Prompt to My Phone</span>
+                {isDispatching ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Connecting to M-Pesa...</span>
+                  </>
+                ) : (
+                  <>
+                    <Smartphone className="w-4 h-4" />
+                    <span>Send STK Prompt to My Phone</span>
+                  </>
+                )}
               </button>
             </form>
           </div>
         )}
 
-        {/* STEP: AUTOMATED PAYHERO WEBHOOK LISTENER (NO MANUAL BYPASS BUTTON) */}
-        {step === 'waiting_for_payhero' && (
+        {/* STEP: AWAITING M-PESA PIN & STRICT STATUS VERIFICATION */}
+        {step === 'waiting_for_stk' && (
           <div className="py-2 space-y-5 text-center">
             <div className="relative w-20 h-20 mx-auto">
-              {/* Pulsing radar circles */}
               <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping opacity-75" />
               <div className="relative w-20 h-20 rounded-2xl bg-zinc-950 border border-emerald-500/40 flex flex-col items-center justify-center text-emerald-400 shadow-xl shadow-emerald-950/60">
                 <Smartphone className="w-8 h-8 text-emerald-400 animate-pulse" />
-                <span className="text-[9px] font-mono font-bold text-emerald-400 mt-1">PAYHERO</span>
+                <span className="text-[9px] font-mono font-bold text-emerald-400 mt-1">M-PESA</span>
               </div>
               <span className="absolute -top-1 -right-1 flex h-4 w-4">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -251,10 +365,9 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <h3 className="text-lg font-bold text-white">STK Prompt Sent to Your Phone!</h3>
+              <h3 className="text-lg font-bold text-white">M-Pesa STK Prompt Sent</h3>
               <p className="text-xs text-zinc-300">
-                PayHero has dispatched an M-Pesa STK prompt to{' '}
-                <strong className="text-emerald-400 font-mono text-sm">{phone}</strong>
+                Prompt delivered to <strong className="text-emerald-400 font-mono text-sm">{phone}</strong>
               </p>
             </div>
 
@@ -262,60 +375,66 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
             <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-left text-xs space-y-2.5">
               <div className="flex items-center gap-2 text-emerald-400 font-semibold pb-1 border-b border-zinc-800">
                 <ShieldCheck className="w-4 h-4" />
-                <span>Please complete the payment on your device:</span>
+                <span>Enter PIN on your handset:</span>
               </div>
               <ol className="list-decimal list-inside space-y-1.5 text-zinc-300 text-[11px] leading-relaxed">
-                <li>Check your phone screen for the Safaricom M-Pesa prompt.</li>
+                <li>Check your phone screen for the Safaricom M-Pesa pop-up.</li>
                 <li>
-                  Confirm the payment amount of{' '}
-                  <strong className="text-white">KES {amount.toLocaleString()}</strong>.
+                  Confirm payment of <strong className="text-white font-mono">KES {amount.toLocaleString()}</strong>.
                 </li>
                 <li>
-                  Enter your secret <strong className="text-emerald-400">M-Pesa PIN</strong> on your
-                  phone keypad.
+                  Enter your <strong className="text-emerald-400">M-Pesa PIN</strong> and tap Send.
                 </li>
               </ol>
             </div>
 
-            {/* Automated Verification Live Feed */}
+            {/* Live PayHero Verification Status */}
             <div className="p-3.5 bg-zinc-950/90 rounded-xl border border-zinc-800 text-left space-y-2 text-xs">
               <div className="flex items-center justify-between font-mono text-[11px] text-zinc-400 border-b border-zinc-800/80 pb-1.5">
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 text-zinc-300 font-medium">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Automated Gateway Listener
+                  PayHero Live Gateway Status
                 </span>
-                <span className="text-emerald-400 font-bold">{countdown}s</span>
+                <span className="text-emerald-400 font-bold font-mono">{countdown}s remaining</span>
               </div>
 
               <div className="space-y-1.5 text-[11px]">
                 <div className="flex items-center gap-2 text-emerald-400">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>1. STK Push Dispatched to Safaricom Daraja</span>
+                  <span>STK Push prompt dispatched to your phone</span>
                 </div>
-                <div className={`flex items-center gap-2 ${verificationStage >= 2 ? 'text-emerald-400' : 'text-zinc-500'}`}>
-                  {verificationStage >= 2 ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                  ) : (
-                    <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-amber-400" />
-                  )}
-                  <span>2. Handset received prompt — awaiting PIN on phone</span>
-                </div>
-                <div className={`flex items-center gap-2 ${verificationStage >= 3 ? 'text-emerald-400 font-medium' : 'text-zinc-500'}`}>
-                  {verificationStage >= 3 ? (
-                    <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-emerald-400" />
-                  ) : (
-                    <span className="w-3.5 h-3.5 rounded-full border border-zinc-700 inline-block shrink-0" />
-                  )}
-                  <span>3. Verifying PayHero IPN callback confirmation...</span>
+                <div className="flex items-center gap-2 text-amber-400">
+                  <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-amber-400" />
+                  <span>Awaiting PIN entry on your phone keypad...</span>
                 </div>
               </div>
+
+              {statusMessage && (
+                <div className="p-2 rounded bg-zinc-900 text-emerald-300 text-[10px] font-mono border border-zinc-800 text-center animate-fadeIn">
+                  {statusMessage}
+                </div>
+              )}
             </div>
 
-            {/* Notice: No manual button bypass */}
-            <div className="text-[11px] text-zinc-400 flex items-center justify-center gap-1.5">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-              <span>Payments are received automatically by PayHero once authorized.</span>
-            </div>
+            {/* Check Payment Status button - verifies strictly against PayHero */}
+            <button
+              type="button"
+              disabled={isCheckingStatus}
+              onClick={() => checkStatusWithServer(activeTxReference, false)}
+              className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 font-semibold text-zinc-200 text-xs shadow-md flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
+            >
+              {isCheckingStatus ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                  <span>Verifying PayHero Receipt...</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Check PayHero Payment Status Now</span>
+                </>
+              )}
+            </button>
 
             <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800">
               <button
@@ -327,16 +446,19 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setStep('failed')}
+                onClick={() => {
+                  setFailureReason('STK push request was cancelled.');
+                  setStep('failed');
+                }}
                 className="text-rose-400 hover:text-rose-300 font-medium transition cursor-pointer"
               >
-                Cancel STK Request
+                Cancel Request
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP: FAILED / NO PAYMENT RECEIVED FROM PAYHERO */}
+        {/* STEP: FAILED / TIMEOUT */}
         {step === 'failed' && (
           <div className="py-4 space-y-5 text-center">
             <div className="w-16 h-16 rounded-full bg-rose-500/15 border border-rose-500/40 flex items-center justify-center text-rose-400 mx-auto">
@@ -344,40 +466,35 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <h3 className="text-lg font-bold text-white">No Payment Received</h3>
+              <h3 className="text-lg font-bold text-white">Payment Not Received</h3>
               <p className="text-xs text-zinc-300">
-                PayHero did not detect a completed M-Pesa transaction for{' '}
-                <strong className="text-white font-mono">KES {amount.toLocaleString()}</strong>.
+                {failureReason}
               </p>
             </div>
 
             <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-left text-xs space-y-2 text-zinc-400">
-              <span className="font-semibold text-rose-400 block">Common reasons for failure:</span>
+              <span className="font-semibold text-rose-400 block">Why did this happen?</span>
               <ul className="list-disc list-inside space-y-1 text-[11px] text-zinc-300">
-                <li>The STK prompt timed out or was cancelled on your phone.</li>
-                <li>Incorrect M-Pesa PIN was entered on the device.</li>
-                <li>Insufficient M-Pesa balance to complete the transaction.</li>
+                <li>No M-Pesa PIN was entered before the prompt expired.</li>
+                <li>The prompt was dismissed or cancelled on the phone.</li>
+                <li>Incorrect M-Pesa PIN or insufficient M-Pesa account balance.</li>
               </ul>
             </div>
 
             <div className="space-y-2.5">
               <button
                 type="button"
-                onClick={() => {
-                  setStep('waiting_for_payhero');
-                  setCountdown(25);
-                  setVerificationStage(1);
-                }}
+                onClick={() => executeStkPush(phone, amount)}
                 className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-white text-xs shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <RotateCw className="w-4 h-4" />
-                <span>Retry STK Push Prompt</span>
+                <span>Resend STK Push Prompt</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setStep('form')}
-                className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 font-medium text-zinc-300 text-xs transition cursor-pointer"
+                className="w-full py-2 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 font-medium text-zinc-300 text-xs transition cursor-pointer"
               >
                 Edit Number or Amount
               </button>
@@ -385,18 +502,18 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
           </div>
         )}
 
-        {/* STEP: SUCCESS - VERIFIED BY PAYHERO */}
+        {/* STEP: SUCCESS - ONLY DISPLAYED WHEN ACTUALLY CONFIRMED */}
         {step === 'success' && generatedTx && (
           <div className="space-y-5 text-center">
             <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mx-auto">
               <CheckCircle2 className="w-10 h-10" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-white">Payment Received!</h3>
+              <h3 className="text-xl font-bold text-white">Payment Verified & Credited!</h3>
               <p className="text-xs text-zinc-400 mt-1">
                 {isActivation
                   ? 'Your Eneza Earnings account is now FULLY ACTIVATED!'
-                  : `KES ${amount.toLocaleString()} has been received and credited to your Deposit Balance.`}
+                  : `KES ${amount.toLocaleString()} has been received via PayHero and credited to your Deposit Balance.`}
               </p>
             </div>
 
@@ -411,7 +528,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-500">Gateway Status:</span>
-                <span className="text-emerald-400 font-bold uppercase">PAYHERO VERIFIED & CREDITED</span>
+                <span className="text-emerald-400 font-bold uppercase">PAYHERO VERIFIED (PAID)</span>
               </div>
             </div>
 

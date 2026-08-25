@@ -457,7 +457,7 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
                     min="1"
                     max="50000"
                     disabled={isSubmittedToday || isWeeklyLimitReached || isSubmitting}
-                    value={viewCountStr}
+                    value={viewCountStr || ''}
                     onChange={(e) => setViewCountStr(e.target.value)}
                     placeholder="Type amount of viewers (e.g. 75, 120, 250)"
                     required

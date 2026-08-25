@@ -208,7 +208,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
                     type="text"
                     id="signin_email"
                     required
-                    value={signInIdentifier}
+                    value={signInIdentifier || ''}
                     onChange={(e) => setSignInIdentifier(e.target.value)}
                     placeholder="2547... or email"
                     className="block w-full rounded-2xl bg-[#08111e] border border-[#1b2f4c] px-4 py-3.5 text-white placeholder-slate-500 text-sm focus:border-[#FF386B] focus:outline-none transition shadow-inner"
@@ -223,7 +223,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
                     type="password"
                     id="signin_password"
                     required
-                    value={signInPassword}
+                    value={signInPassword || ''}
                     onChange={(e) => setSignInPassword(e.target.value)}
                     placeholder=""
                     className="block w-full rounded-2xl bg-[#08111e] border border-[#1b2f4c] px-4 py-3.5 text-white placeholder-slate-500 text-sm focus:border-[#FF386B] focus:outline-none transition shadow-inner"
@@ -292,7 +292,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
                     type="text"
                     id="signup_fullname"
                     required
-                    value={fullName}
+                    value={fullName || ''}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder=""
                     className="block w-full rounded-2xl bg-[#08111e] border border-[#1b2f4c] px-4 py-3 text-white placeholder-slate-500 text-sm focus:border-[#FF386B] focus:outline-none transition shadow-inner"
@@ -307,7 +307,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
                     type="tel"
                     id="signup_phone"
                     required
-                    value={phone}
+                    value={phone || ''}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="07XX XXX XXX"
                     className="block w-full rounded-2xl bg-[#08111e] border border-[#1b2f4c] px-4 py-3 text-white placeholder-slate-500 text-sm focus:border-[#FF386B] focus:outline-none transition shadow-inner font-mono"
@@ -321,7 +321,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
                   <input
                     type="email"
                     id="signup_email"
-                    value={email}
+                    value={email || ''}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder=""
                     className="block w-full rounded-2xl bg-[#08111e] border border-[#1b2f4c] px-4 py-3 text-white placeholder-slate-500 text-sm focus:border-[#FF386B] focus:outline-none transition shadow-inner"
@@ -336,7 +336,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
                     type="password"
                     id="signup_password"
                     required
-                    value={signupPassword}
+                    value={signupPassword || ''}
                     onChange={(e) => setSignupPassword(e.target.value)}
                     placeholder=""
                     className="block w-full rounded-2xl bg-[#08111e] border border-[#1b2f4c] px-4 py-3 text-white placeholder-slate-500 text-sm focus:border-[#FF386B] focus:outline-none transition shadow-inner"
@@ -351,7 +351,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
                     type="password"
                     id="signup_confirm_password"
                     required
-                    value={confirmPassword}
+                    value={confirmPassword || ''}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder=""
                     className="block w-full rounded-2xl bg-[#08111e] border border-[#1b2f4c] px-4 py-3 text-white placeholder-slate-500 text-sm focus:border-[#FF386B] focus:outline-none transition shadow-inner"

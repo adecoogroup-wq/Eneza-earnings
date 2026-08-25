@@ -47,7 +47,7 @@ export const AuthorizePackageView: React.FC<AuthorizePackageViewProps> = ({
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            Authorize Package Gateway
+            Authorize VIP Package
           </h1>
 
           <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed max-w-2xl">

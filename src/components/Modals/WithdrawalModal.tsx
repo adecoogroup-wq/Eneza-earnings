@@ -214,7 +214,7 @@ export const WithdrawalModal: React.FC<WithdrawalModalProps> = ({
                 <input
                   type="tel"
                   required
-                  value={phone}
+                  value={phone || ''}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="07XXXXXXXX"
                   className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-100 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
@@ -237,7 +237,7 @@ export const WithdrawalModal: React.FC<WithdrawalModalProps> = ({
                   required
                   min={minWithdrawal}
                   max={user.balance}
-                  value={amount}
+                  value={isNaN(amount) ? '' : amount}
                   onChange={(e) => setAmount(Number(e.target.value))}
                   className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-100 text-lg font-bold focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
@@ -250,7 +250,7 @@ export const WithdrawalModal: React.FC<WithdrawalModalProps> = ({
                   <span className="text-zinc-200 font-mono">KES {amount.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Gateway Fee:</span>
+                  <span>M-Pesa Transfer Fee:</span>
                   <span className={fee === 0 ? 'text-emerald-400 font-bold' : 'text-zinc-400'}>
                     {fee === 0 ? 'FREE (VIP Perk)' : `KES ${fee}`}
                   </span>

@@ -277,7 +277,7 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
               <label className="block text-xs font-medium text-zinc-400 mb-1">Enter Code Above Exactly:</label>
               <input
                 type="text"
-                value={inputCaptcha}
+                value={inputCaptcha || ''}
                 onChange={(e) => setInputCaptcha(e.target.value)}
                 placeholder="Type code here..."
                 className="w-full text-center tracking-widest text-lg font-mono uppercase rounded-lg bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-100 focus:border-emerald-500 focus:outline-none"
@@ -331,7 +331,7 @@ export const TaskExecutionModal: React.FC<TaskExecutionModalProps> = ({
               <label className="block text-xs font-medium text-zinc-400 mb-1">Feedback & Review Comment</label>
               <textarea
                 rows={3}
-                value={reviewText}
+                value={reviewText || ''}
                 onChange={(e) => setReviewText(e.target.value)}
                 placeholder="Write your brief honest review of the mobile platform..."
                 className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-zinc-100 text-xs focus:border-emerald-500 focus:outline-none"

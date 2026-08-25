@@ -155,9 +155,13 @@ export default function App() {
   const [activeInvestments, setActiveInvestments] = useState<ActiveInvestment[]>(() =>
     getStored('active_investments', INITIAL_ACTIVE_INVESTMENTS)
   );
-  const [payheroConfig, setPayheroConfig] = useState<PayHeroConfig>(() =>
-    getStored('payhero_config', INITIAL_PAYHERO_CONFIG)
-  );
+  const [payheroConfig, setPayheroConfig] = useState<PayHeroConfig>(() => {
+    const stored = getStored('payhero_config', INITIAL_PAYHERO_CONFIG);
+    return {
+      ...INITIAL_PAYHERO_CONFIG,
+      ...(stored || {}),
+    };
+  });
 
   // Dark / Light Mode State (Defaults to true matching EarnWave dark design)
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() =>
@@ -1494,6 +1498,7 @@ export default function App() {
         <MpesaDepositModal
           user={currentUser}
           isActivation={isActivationMode}
+          payheroConfig={payheroConfig}
           onClose={() => {
             setIsDepositOpen(false);
             setIsActivationMode(false);

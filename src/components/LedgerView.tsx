@@ -44,7 +44,7 @@ export const LedgerView: React.FC<LedgerViewProps> = ({ transactions, onViewRece
           <Search className="w-4 h-4 absolute left-3.5 top-3 text-zinc-500" />
           <input
             type="text"
-            value={searchTerm}
+            value={searchTerm || ''}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search receipt, phone, name..."
             className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"

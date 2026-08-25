@@ -120,7 +120,7 @@ export const InvestmentPlansView: React.FC<InvestmentPlansViewProps> = ({
                 type="number"
                 min="1500"
                 step="500"
-                value={calcAmount}
+                value={isNaN(calcAmount) ? '' : calcAmount}
                 onChange={(e) => setCalcAmount(Math.max(1500, parseInt(e.target.value) || 1500))}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-14 pr-4 py-2.5 text-white font-mono font-bold text-base focus:border-emerald-500 focus:outline-none"
               />

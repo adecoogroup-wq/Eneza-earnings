@@ -514,7 +514,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         >
           <span className="flex items-center gap-1.5">
             <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-            <span>M-Pesa Gateway Live Sync Active (0s latency)</span>
+            <span>M-Pesa Real-Time Balance Sync Active</span>
           </span>
           <span className="font-semibold text-emerald-500">
             KES 840,000+ Disbursed Today

@@ -37,7 +37,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
             <CheckCircle className="w-8 h-8" />
           </div>
           <h3 className="text-lg font-bold text-white tracking-tight">M-Pesa Transaction Receipt</h3>
-          <p className="text-xs text-zinc-400 mt-1">Eneza Earnings Automated Payment Gateway</p>
+          <p className="text-xs text-zinc-400 mt-1">Eneza Earnings Automated M-Pesa Settlement</p>
         </div>
 
         {/* Receipt Slip Container */}
@@ -96,7 +96,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ transaction, onClose
         {/* Security watermark */}
         <div className="flex items-center justify-center gap-1.5 text-zinc-500 text-xs mb-5">
           <ShieldCheck className="w-4 h-4 text-emerald-500" />
-          <span>Verified Safaricom M-Pesa B2C Gateway</span>
+          <span>Verified Safaricom M-Pesa Official System</span>
         </div>
 
         {/* Action Buttons */}

@@ -57,7 +57,7 @@ export const UniversePackageView: React.FC<UniversePackageViewProps> = ({
           <div className="pt-2 flex flex-wrap items-center gap-4 text-xs text-zinc-400">
             <div className="flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-indigo-400" />
-              <span>Full Executive Direct Cashout Gateway</span>
+              <span>Full Executive Direct Cashout Access</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-amber-400" />

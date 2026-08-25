@@ -135,7 +135,7 @@ export const CashbackBonusView: React.FC<CashbackBonusViewProps> = ({
           className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40 transition cursor-pointer"
         >
           <PlusCircle className="w-4 h-4" />
-          <span>Deposit to Account via PayHero</span>
+          <span>Deposit to Account via M-Pesa</span>
         </button>
       </div>
 
@@ -350,7 +350,7 @@ export const CashbackBonusView: React.FC<CashbackBonusViewProps> = ({
                       className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg flex items-center justify-center gap-2 transition cursor-pointer"
                     >
                       <Smartphone className="w-4 h-4" />
-                      <span>Deposit KES {(currentFee - userDepositBalance).toLocaleString()} via PayHero</span>
+                      <span>Deposit KES {(currentFee - userDepositBalance).toLocaleString()} via M-Pesa</span>
                     </button>
                   </div>
                 )}
