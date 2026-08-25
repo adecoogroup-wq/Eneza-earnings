@@ -13,7 +13,8 @@ export interface User {
   role: UserRole;
   isActivated: boolean; // Account activation status
   tier: TierLevel;
-  balance: number; // in KES
+  balance: number; // in KES (withdrawable / main balance)
+  depositBalance: number; // in KES (active deposit balance for claiming bonuses/packages)
   pendingBalance: number;
   totalWithdrawn: number;
   totalEarned: number;

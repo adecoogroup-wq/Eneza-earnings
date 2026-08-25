@@ -138,6 +138,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
       isActivated: false,
       tier: 'Standard',
       balance: 0,
+      depositBalance: 0,
       pendingBalance: 0,
       totalWithdrawn: 0,
       totalEarned: 0,

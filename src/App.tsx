@@ -87,6 +87,7 @@ export default function App() {
       isActivated: Boolean(u.isActivated),
       tier: u.tier || 'Standard',
       balance: Number(u.balance || 0),
+      depositBalance: Number(u.depositBalance || 0),
       pendingBalance: Number(u.pendingBalance || 0),
       totalWithdrawn: Number(u.totalWithdrawn || 0),
       totalEarned: Number(u.totalEarned || 0),
@@ -301,7 +302,7 @@ export default function App() {
       sourcePackageName: pkg.name,
       packagePrice: pkg.price,
       cashbackAmount: pkg.cashbackBonus,
-      unlockFeeRequired: Math.round(pkg.price * 0.4), // 40% of package bought
+      unlockFeeRequired: Math.round(pkg.cashbackBonus * 0.4), // 40% of Cashback bonus
       status: 'pending_unlock',
       createdAt: new Date().toISOString(),
     };
@@ -322,7 +323,7 @@ export default function App() {
     const newNotif: NotificationItem = {
       id: `notif_${Date.now()}`,
       title: `${pkg.name} Activated!`,
-      message: `Receipt ${receipt}. KES ${(pkg.cashbackBonus || 0).toLocaleString()} Cashback Bonus has been credited to your Cashback Vault (Pay 40% fee to unlock).`,
+      message: `Receipt ${receipt}. KES ${(pkg.cashbackBonus || 0).toLocaleString()} Cashback Bonus has been credited to your Cashback Vault (Claim with 40% deposit balance).`,
       time: 'Just now',
       isRead: false,
       type: 'money',
@@ -338,11 +339,19 @@ export default function App() {
   // ==========================================
   const handleClaimCashback = (item: CashbackItem) => {
     if (!currentUser) return;
+    const requiredDepositFee = item.unlockFeeRequired || Math.round(item.cashbackAmount * 0.4);
+    const userDepositBal = currentUser.depositBalance || 0;
+
+    if (userDepositBal < requiredDepositFee) {
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+      return;
+    }
 
     const receiptFee = generateReceipt();
     const receiptBonus = generateReceipt();
 
-    // 1. Fee Transaction (40% payment)
+    // 1. Fee Transaction (40% payment deducted from deposit balance)
     const feeTx: Transaction = {
       id: `tx_cb_fee_${Date.now()}`,
       mpesaReceiptNo: receiptFee,
@@ -350,11 +359,11 @@ export default function App() {
       userName: `${currentUser.firstName} ${currentUser.lastName}`,
       userPhone: currentUser.phone,
       type: 'cashback_fee',
-      amount: item.unlockFeeRequired,
+      amount: requiredDepositFee,
       fee: 0,
-      netAmount: item.unlockFeeRequired,
+      netAmount: requiredDepositFee,
       status: 'completed',
-      description: `40% Clearance Fee for ${item.sourcePackageName} Cashback`,
+      description: `40% Deposit Clearance for ${item.sourcePackageName} Cashback`,
       createdAt: new Date().toISOString(),
     };
 
@@ -370,7 +379,7 @@ export default function App() {
       fee: 0,
       netAmount: item.cashbackAmount,
       status: 'completed',
-      description: `Disbursed 200% Cashback Bonus (${item.sourcePackageName})`,
+      description: `Disbursed Cashback Bonus (${item.sourcePackageName})`,
       createdAt: new Date().toISOString(),
     };
 
@@ -383,6 +392,7 @@ export default function App() {
 
     const updatedUser: User = {
       ...currentUser,
+      depositBalance: Math.max(0, userDepositBal - requiredDepositFee),
       balance: currentUser.balance + item.cashbackAmount,
       totalEarned: currentUser.totalEarned + item.cashbackAmount,
       pendingCashbackTotal: Math.max(0, currentUser.pendingCashbackTotal - item.cashbackAmount),
@@ -393,8 +403,8 @@ export default function App() {
 
     const newNotif: NotificationItem = {
       id: `notif_${Date.now()}`,
-      title: 'Cashback Bonus Unlocked!',
-      message: `+KES ${(item.cashbackAmount || 0).toLocaleString()} credited to your spendable balance via M-Pesa receipt ${receiptBonus}.`,
+      title: 'Cashback Bonus Claimed!',
+      message: `KES ${(item.cashbackAmount || 0).toLocaleString()} credited to your balance via M-Pesa receipt ${receiptBonus} using KES ${(requiredDepositFee).toLocaleString()} from your deposit balance.`,
       time: 'Just now',
       isRead: false,
       type: 'money',
@@ -408,11 +418,40 @@ export default function App() {
     const pending = cashbackItems.filter((i) => i.status === 'pending_unlock');
     if (pending.length === 0 || !currentUser) return;
 
+    const totalRequiredFee = pending.reduce(
+      (acc, curr) => acc + (curr.unlockFeeRequired || Math.round(curr.cashbackAmount * 0.4)),
+      0
+    );
+    const userDepositBal = currentUser.depositBalance || 0;
+
+    if (userDepositBal < totalRequiredFee) {
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+      return;
+    }
+
     let totalBonus = 0;
     const newTxs: Transaction[] = [];
 
     pending.forEach((item) => {
+      const itemFee = item.unlockFeeRequired || Math.round(item.cashbackAmount * 0.4);
       totalBonus += item.cashbackAmount;
+
+      newTxs.push({
+        id: `tx_cb_fee_${Date.now()}_${item.id}`,
+        mpesaReceiptNo: generateReceipt(),
+        userId: currentUser.id,
+        userName: `${currentUser.firstName} ${currentUser.lastName}`,
+        userPhone: currentUser.phone,
+        type: 'cashback_fee',
+        amount: itemFee,
+        fee: 0,
+        netAmount: itemFee,
+        status: 'completed',
+        description: `40% Deposit Clearance: ${item.sourcePackageName}`,
+        createdAt: new Date().toISOString(),
+      });
+
       newTxs.push({
         id: `tx_cb_all_${Date.now()}_${item.id}`,
         mpesaReceiptNo: generateReceipt(),
@@ -424,7 +463,7 @@ export default function App() {
         fee: 0,
         netAmount: item.cashbackAmount,
         status: 'completed',
-        description: `Batch Unlocked Cashback: ${item.sourcePackageName}`,
+        description: `Disbursed Cashback: ${item.sourcePackageName}`,
         createdAt: new Date().toISOString(),
       });
     });
@@ -436,6 +475,7 @@ export default function App() {
 
     const updatedUser: User = {
       ...currentUser,
+      depositBalance: Math.max(0, userDepositBal - totalRequiredFee),
       balance: currentUser.balance + totalBonus,
       totalEarned: currentUser.totalEarned + totalBonus,
       pendingCashbackTotal: 0,
@@ -572,7 +612,7 @@ export default function App() {
       sourcePackageName: pkg.name,
       packagePrice: pkg.price,
       cashbackAmount: pkg.cashbackBonus,
-      unlockFeeRequired: Math.round(pkg.price * 0.4), // KES 2,000
+      unlockFeeRequired: Math.round(pkg.cashbackBonus * 0.4), // 40% of Cashback bonus
       status: 'pending_unlock',
       createdAt: new Date().toISOString(),
     };
@@ -618,7 +658,7 @@ export default function App() {
       sourcePackageName: pkg.name,
       packagePrice: pkg.price,
       cashbackAmount: pkg.cashbackBonus,
-      unlockFeeRequired: Math.round(pkg.price * 0.4), // KES 2,800
+      unlockFeeRequired: Math.round(pkg.cashbackBonus * 0.4), // 40% of Cashback bonus
       status: 'pending_unlock',
       createdAt: new Date().toISOString(),
     };
@@ -1301,6 +1341,10 @@ export default function App() {
               cashbackItems={cashbackItems}
               onClaimCashback={handleClaimCashback}
               onClaimAllCashback={handleClaimAllCashback}
+              onOpenDeposit={() => {
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
               onSwitchView={(v) => setCurrentView(v)}
             />
           )}
