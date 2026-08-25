@@ -26,6 +26,9 @@ import {
   Lock,
   Save,
   Eye,
+  EyeOff,
+  User as UserIcon,
+  Hash,
   X,
   ShoppingBag,
   Sparkles,
@@ -88,9 +91,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [broadcastMessage, setBroadcastMessage] = useState('');
   const [broadcastSent, setBroadcastSent] = useState(false);
 
-  // PayHero Form State
+  // PayHero Form State (API Key, Username, Channel ID)
   const [payConfig, setPayConfig] = useState<PayHeroConfig>(payheroConfig);
   const [payConfigSaved, setPayConfigSaved] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   // PayHero STK Push Dispatcher State
   const [stkPhone, setStkPhone] = useState('0712345678');
@@ -332,161 +336,155 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-emerald-400" />
-                PayHero M-Pesa Payment Gateway & Webhook Control
+                PayHero M-Pesa Payment Gateway Control
               </h3>
               <p className="text-xs text-zinc-400 mt-1">
-                Configure Daraja & PayHero API keys, Lipa na M-Pesa channels, and automated B2C payout rules.
+                Enter your PayHero API Key, Username, and Channel ID to power Lipa Na M-Pesa STK push and deposits.
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold ${
-                payConfig.mode === 'Live'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-              }`}>
-                {payConfig.mode} Mode Active
+              <span className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Channel #{payConfig.channelId || '678'} Active
               </span>
             </div>
           </div>
 
-          <form onSubmit={handlePayHeroSubmit} className="space-y-5 max-w-3xl">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Active Configuration Quick Overview */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl bg-zinc-950/60 border border-zinc-800/80">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                <Key className="w-4 h-4" />
+              </div>
+              <div className="overflow-hidden">
+                <div className="text-[10px] uppercase font-bold text-zinc-400">API Key Status</div>
+                <div className="text-xs font-mono font-semibold text-zinc-200 truncate">
+                  {payConfig.apiKey ? `${payConfig.apiKey.slice(0, 7)}••••••••` : 'Not Configured'}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shrink-0">
+                <UserIcon className="w-4 h-4" />
+              </div>
+              <div className="overflow-hidden">
+                <div className="text-[10px] uppercase font-bold text-zinc-400">PayHero Username</div>
+                <div className="text-xs font-mono font-semibold text-zinc-200 truncate">
+                  {payConfig.username || 'Not Configured'}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 shrink-0">
+                <Hash className="w-4 h-4" />
+              </div>
+              <div className="overflow-hidden">
+                <div className="text-[10px] uppercase font-bold text-zinc-400">Channel ID</div>
+                <div className="text-xs font-mono font-semibold text-zinc-200 truncate">
+                  {payConfig.channelId || 'Not Configured'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <form onSubmit={handlePayHeroSubmit} className="space-y-5 max-w-2xl">
+            <div className="space-y-4">
+              {/* Field 1: PayHero API Key */}
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">PayHero API Key</label>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-emerald-400" />
+                    PayHero API Key
+                  </span>
+                  <span className="text-[11px] text-zinc-500 font-normal">Required</span>
+                </label>
                 <div className="relative">
-                  <Key className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
                   <input
-                    type="password"
+                    type={showApiKey ? 'text' : 'password'}
                     required
                     value={payConfig.apiKey}
                     onChange={(e) => setPayConfig({ ...payConfig, apiKey: e.target.value })}
-                    className="w-full rounded-lg bg-zinc-950 border border-zinc-800 pl-9 pr-3 py-2 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:outline-none"
+                    placeholder="e.g. ph_live_9a87fbc21008d81e"
+                    className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none pr-10"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300 transition"
+                    title={showApiKey ? 'Hide API Key' : 'Show API Key'}
+                  >
+                    {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  Obtain your live API Key from your PayHero dashboard under Settings &gt; API Keys.
+                </p>
               </div>
 
+              {/* Field 2: PayHero Username */}
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">API Secret / Auth Token</label>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <UserIcon className="w-3.5 h-3.5 text-teal-400" />
+                    PayHero Username
+                  </span>
+                  <span className="text-[11px] text-zinc-500 font-normal">Required</span>
+                </label>
                 <div className="relative">
-                  <Lock className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
                   <input
-                    type="password"
+                    type="text"
                     required
-                    value={payConfig.apiSecret}
-                    onChange={(e) => setPayConfig({ ...payConfig, apiSecret: e.target.value })}
-                    className="w-full rounded-lg bg-zinc-950 border border-zinc-800 pl-9 pr-3 py-2 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:outline-none"
+                    value={payConfig.username}
+                    onChange={(e) => setPayConfig({ ...payConfig, username: e.target.value })}
+                    placeholder="e.g. EnezaEarningsHQ or your registered username"
+                    className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  Your registered PayHero account username used for HTTP Basic authentication.
+                </p>
               </div>
 
+              {/* Field 3: PayHero Channel ID */}
               <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">PayHero Service ID</label>
-                <input
-                  type="text"
-                  required
-                  value={payConfig.serviceId}
-                  onChange={(e) => setPayConfig({ ...payConfig, serviceId: e.target.value })}
-                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:outline-none"
-                />
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Hash className="w-3.5 h-3.5 text-rose-400" />
+                    PayHero Channel ID
+                  </span>
+                  <span className="text-[11px] text-zinc-500 font-normal">Required</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={payConfig.channelId}
+                    onChange={(e) => setPayConfig({ ...payConfig, channelId: e.target.value })}
+                    placeholder="e.g. 678 or your M-Pesa Channel ID"
+                    className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  The PayHero Channel ID linked to your Lipa Na M-Pesa Till or Paybill where funds are collected.
+                </p>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">Paybill / Till Number</label>
-                <input
-                  type="text"
-                  required
-                  value={payConfig.paybillOrTill}
-                  onChange={(e) => setPayConfig({ ...payConfig, paybillOrTill: e.target.value })}
-                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">Channel Type</label>
-                <select
-                  value={payConfig.channelType}
-                  onChange={(e) => setPayConfig({ ...payConfig, channelType: e.target.value as any })}
-                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100 focus:border-emerald-500 focus:outline-none"
-                >
-                  <option value="Paybill">Paybill (Standard Business)</option>
-                  <option value="Till">Till Number (Buy Goods)</option>
-                  <option value="B2C Payout">B2C Automated Disbursement</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">Operating Mode</label>
-                <select
-                  value={payConfig.mode}
-                  onChange={(e) => setPayConfig({ ...payConfig, mode: e.target.value as any })}
-                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100 focus:border-emerald-500 focus:outline-none font-bold"
-                >
-                  <option value="Live">Live (Real M-Pesa STK & Money)</option>
-                  <option value="Sandbox">Sandbox (Test / Simulator Mode)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">Min Disbursal Limit (KES)</label>
-                <input
-                  type="number"
-                  required
-                  min={50}
-                  value={payConfig.minDisbursalLimit}
-                  onChange={(e) => setPayConfig({ ...payConfig, minDisbursalLimit: Number(e.target.value) })}
-                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1">Max Disbursal Limit (KES)</label>
-                <input
-                  type="number"
-                  required
-                  max={250000}
-                  value={payConfig.maxDisbursalLimit}
-                  onChange={(e) => setPayConfig({ ...payConfig, maxDisbursalLimit: Number(e.target.value) })}
-                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1">Callback / Webhook URL</label>
-              <input
-                type="url"
-                required
-                value={payConfig.callbackUrl}
-                onChange={(e) => setPayConfig({ ...payConfig, callbackUrl: e.target.value })}
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs text-zinc-100 font-mono focus:border-emerald-500 focus:outline-none"
-              />
             </div>
 
             <div className="flex items-center gap-3 pt-2">
-              <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={payConfig.autoDisburse}
-                  onChange={(e) => setPayConfig({ ...payConfig, autoDisburse: e.target.checked })}
-                  className="rounded border-zinc-700 text-emerald-500 focus:ring-emerald-500"
-                />
-                <span>Enable Automated Instant B2C Payouts (Direct to M-Pesa without manual approval)</span>
-              </label>
-            </div>
-
-            <div className="flex items-center gap-3 pt-3">
               <button
                 type="submit"
                 className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-900/30 transition flex items-center gap-2 cursor-pointer"
               >
                 <Save className="w-4 h-4" />
-                Save Gateway Configurations
+                Save PayHero Credentials
               </button>
 
               {payConfigSaved && (
-                <span className="text-xs text-emerald-400 flex items-center gap-1 font-semibold animate-fadeIn">
-                  <Check className="w-4 h-4" /> PayHero parameters successfully committed!
+                <span className="text-xs text-emerald-400 flex items-center gap-1.5 font-semibold animate-fadeIn bg-emerald-950/40 border border-emerald-500/30 px-3 py-1.5 rounded-lg">
+                  <Check className="w-4 h-4 text-emerald-400" /> Credentials successfully saved!
                 </span>
               )}
             </div>
@@ -604,7 +602,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <p className="font-semibold">{stkResult.message}</p>
                   {stkResult.receipt && (
                     <p className="font-mono text-[11px] text-zinc-300">
-                      Automated PayHero Receipt: <span className="text-white font-bold">{stkResult.receipt}</span> | Callback: <span className="text-emerald-400 font-bold">200 OK</span>
+                      Automated PayHero Receipt: <span className="text-white font-bold">{stkResult.receipt}</span> | Channel: <span className="text-emerald-400 font-bold">#{payConfig.channelId || '678'}</span> ({payConfig.username || 'Eneza'}) | Callback: <span className="text-emerald-400 font-bold">200 OK</span>
                     </p>
                   )}
                 </div>

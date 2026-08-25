@@ -1,6 +1,10 @@
-import React from 'react';
-import { User, EarningTask, Transaction } from '../types';
-import { LIVE_PAYOUTS } from '../data/mockData';
+import React, { useState, useEffect } from 'react';
+import { User, EarningTask, Transaction, LivePayoutItem } from '../types';
+import {
+  generateInitialBotActivityList,
+  generateSingleBotActivity,
+  formatTimeAgo,
+} from '../utils/botActivity';
 import {
   MessageSquare,
   ShoppingBag,
@@ -17,6 +21,9 @@ import {
   ArrowRight,
   Smartphone,
   Crown,
+  Radio,
+  Users,
+  Award,
 } from 'lucide-react';
 import { AppView } from './Sidebar';
 
@@ -41,6 +48,40 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   isDarkMode = true,
 }) => {
   const [copiedAccount, setCopiedAccount] = React.useState(false);
+
+  // Platform Live Activity Active Bot Data Engine (Automatically shuffles & streams)
+  const [botActivities, setBotActivities] = useState<LivePayoutItem[]>(() =>
+    generateInitialBotActivityList(10)
+  );
+  const [newestId, setNewestId] = useState<string | null>(null);
+
+  // Active real-time bot transaction stream (automatically streams new activities every ~3 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const newItem = generateSingleBotActivity(0);
+      setNewestId(newItem.id);
+      setBotActivities((prev) => [newItem, ...prev.slice(0, 15)]);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Real-time second-by-second dynamic time elapsed tick
+  useEffect(() => {
+    const tickInterval = setInterval(() => {
+      setBotActivities((prev) =>
+        prev.map((item) => {
+          if (!item.timestampMs) return item;
+          return {
+            ...item,
+            timeAgo: formatTimeAgo(item.timestampMs),
+          };
+        })
+      );
+    }, 1000);
+
+    return () => clearInterval(tickInterval);
+  }, []);
 
   const formatCurrency = (amount?: number | null) => {
     const val = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
@@ -320,73 +361,164 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         </button>
       </div>
 
-      {/* 8. PLATFORM LIVE ACTIVITY */}
+      {/* 8. PLATFORM LIVE ACTIVITY (Auto-Streaming Real-time Bot Activity) */}
       <div
         className={`${
           isDarkMode
             ? 'bg-[#0b1626] border-[#1b2f4c]'
             : 'bg-white/95 border-slate-200/90'
-        } border rounded-[26px] p-6 shadow-xs space-y-4`}
+        } border rounded-[26px] p-5 sm:p-6 shadow-xs space-y-4 transition-all duration-300`}
       >
-        <div className="flex items-center justify-between">
-          <h2
-            className={`text-lg font-black tracking-tight ${
-              isDarkMode ? 'text-zinc-100' : 'text-slate-900'
-            }`}
-          >
-            Platform live activity
-          </h2>
-          <span className="flex h-3 w-3 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-          </span>
+        {/* Header with Live Pulse */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <h2
+              className={`text-lg font-black tracking-tight ${
+                isDarkMode ? 'text-zinc-100' : 'text-slate-900'
+              }`}
+            >
+              Platform live activity
+            </h2>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold tracking-wide uppercase">
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span>Live Stream</span>
+            </div>
+          </div>
         </div>
 
+        {/* Dynamic Actively Auto-Streaming Bot Transactions List */}
         <div
           className={`divide-y ${
             isDarkMode ? 'divide-[#182a44]' : 'divide-slate-100'
           } text-xs`}
         >
-          {LIVE_PAYOUTS.slice(0, 6).map((item, idx) => (
-            <div key={idx} className="py-3 flex items-center justify-between gap-2 first:pt-1 last:pb-1">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center font-bold text-xs">
-                  KES
-                </div>
-                <div>
-                  <div
-                    className={`font-semibold ${
-                      isDarkMode ? 'text-zinc-100' : 'text-slate-900'
-                    }`}
-                  >
-                    Member {item.phone}
-                  </div>
-                  <div
-                    className={`text-[11px] ${
-                      isDarkMode ? 'text-zinc-400' : 'text-slate-500'
-                    }`}
-                  >
-                    Direct M-Pesa B2C Cashout · {item.timeAgo}
-                  </div>
-                </div>
-              </div>
+          {botActivities.slice(0, 7).map((item) => {
+            const isJustAdded = item.id === newestId;
 
-              <div className="text-right">
-                <div className="font-mono font-black text-emerald-500 text-sm">
-                  +KES {(item.amount || 0).toLocaleString()}
+            // Resolve category specific icons and accent badges
+            let iconElement = <CreditCard className="w-4 h-4" />;
+            let badgeBg = 'bg-emerald-500/20 text-emerald-400';
+
+            if (item.type === 'whatsapp') {
+              iconElement = <MessageSquare className="w-4 h-4" />;
+              badgeBg = 'bg-pink-500/20 text-pink-400';
+            } else if (item.type === 'spin') {
+              iconElement = <Gift className="w-4 h-4" />;
+              badgeBg = 'bg-amber-500/20 text-amber-400';
+            } else if (item.type === 'referral') {
+              iconElement = <Users className="w-4 h-4" />;
+              badgeBg = 'bg-purple-500/20 text-purple-400';
+            } else if (item.type === 'package') {
+              iconElement = <Sparkles className="w-4 h-4" />;
+              badgeBg = 'bg-cyan-500/20 text-cyan-400';
+            } else if (item.type === 'investment') {
+              iconElement = <Zap className="w-4 h-4" />;
+              badgeBg = 'bg-blue-500/20 text-blue-400';
+            } else if (item.type === 'task') {
+              iconElement = <CheckCircle2 className="w-4 h-4" />;
+              badgeBg = 'bg-sky-500/20 text-sky-400';
+            }
+
+            return (
+              <div
+                key={item.id}
+                className={`py-3 flex items-center justify-between gap-2.5 first:pt-1 last:pb-1 transition-all duration-300 ${
+                  isJustAdded
+                    ? isDarkMode
+                      ? 'bg-emerald-950/30 -mx-2 px-2 rounded-xl'
+                      : 'bg-emerald-50/60 -mx-2 px-2 rounded-xl'
+                    : ''
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-9 h-9 rounded-full ${badgeBg} flex items-center justify-center font-bold text-xs shrink-0 shadow-xs`}
+                  >
+                    {iconElement}
+                  </div>
+                  <div className="min-w-0">
+                    <div
+                      className={`font-semibold flex items-center gap-1.5 flex-wrap ${
+                        isDarkMode ? 'text-zinc-100' : 'text-slate-900'
+                      }`}
+                    >
+                      <span>Member {item.phone}</span>
+                      {item.memberName && (
+                        <span
+                          className={`text-[11px] font-normal ${
+                            isDarkMode ? 'text-zinc-400' : 'text-slate-500'
+                          }`}
+                        >
+                          ({item.memberName} · {item.location || 'Kenya'})
+                        </span>
+                      )}
+                      {isJustAdded && (
+                        <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[9px] font-extrabold uppercase animate-pulse">
+                          ⚡ Just in
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className={`text-[11px] ${
+                        isDarkMode ? 'text-zinc-400' : 'text-slate-500'
+                      } flex items-center gap-1.5 flex-wrap mt-0.5`}
+                    >
+                      <span>
+                        {item.actionTitle || 'Direct M-Pesa B2C Cashout'}
+                      </span>
+                      <span>·</span>
+                      <span className="text-emerald-400 font-semibold">
+                        {item.timeAgo}
+                      </span>
+                      {item.mpesaRef && (
+                        <>
+                          <span>·</span>
+                          <span className="font-mono text-[10px] opacity-75">
+                            {item.mpesaRef}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                    isDarkMode
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-emerald-50 text-emerald-700'
-                  } font-semibold`}
-                >
-                  Completed
-                </span>
+
+                <div className="text-right shrink-0">
+                  <div className="font-mono font-black text-emerald-500 text-sm sm:text-base">
+                    +KES {(item.amount || 0).toLocaleString()}
+                  </div>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      isDarkMode
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                    } font-bold inline-block mt-0.5`}
+                  >
+                    Completed
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
+        </div>
+
+        {/* Activity Live Pulse Footer Bar */}
+        <div
+          className={`pt-3 border-t ${
+            isDarkMode ? 'border-[#182a44]' : 'border-slate-100'
+          } flex items-center justify-between text-[11px] ${
+            isDarkMode ? 'text-zinc-400' : 'text-slate-500'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+            <span>M-Pesa Gateway Live Sync Active (0s latency)</span>
+          </span>
+          <span className="font-semibold text-emerald-500">
+            KES 840,000+ Disbursed Today
+          </span>
         </div>
       </div>
     </div>

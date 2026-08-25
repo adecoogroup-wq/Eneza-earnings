@@ -130,7 +130,12 @@ export interface LivePayoutItem {
   phone: string;
   amount: number;
   timeAgo: string;
-  type: 'withdrawal' | 'spin' | 'task';
+  type: 'withdrawal' | 'spin' | 'task' | 'referral' | 'package' | 'whatsapp' | 'investment';
+  memberName?: string;
+  location?: string;
+  actionTitle?: string;
+  mpesaRef?: string;
+  timestampMs?: number;
 }
 
 export interface NotificationItem {
@@ -226,18 +231,20 @@ export interface DailyProductItem {
   footerManagedBy?: string;
 }
 
-// PayHero & Payment Gateway Integration Settings
+// PayHero & Payment Gateway Integration Settings (API Key, Username, Channel ID)
 export interface PayHeroConfig {
   apiKey: string;
-  apiSecret: string;
-  serviceId: string;
-  paybillOrTill: string;
-  channelType: 'Paybill' | 'Till' | 'B2C Payout';
-  callbackUrl: string;
-  mode: 'Live' | 'Sandbox';
-  autoDisburse: boolean;
-  minDisbursalLimit: number;
-  maxDisbursalLimit: number;
+  username: string;
+  channelId: string;
+  apiSecret?: string;
+  serviceId?: string;
+  paybillOrTill?: string;
+  channelType?: 'Paybill' | 'Till' | 'B2C Payout';
+  callbackUrl?: string;
+  mode?: 'Live' | 'Sandbox';
+  autoDisburse?: boolean;
+  minDisbursalLimit?: number;
+  maxDisbursalLimit?: number;
 }
 
 

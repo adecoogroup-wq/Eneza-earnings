@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, ArrowUpRight, Sparkles, X, CheckCircle2 } from 'lucide-react';
+import { generateSingleBotActivity } from '../utils/botActivity';
 
 interface ToastData {
   id: string;
@@ -8,68 +9,22 @@ interface ToastData {
   action: string;
   amount: string;
   timeAgo: string;
-  type: 'withdrawal' | 'spin' | 'task' | 'referral';
+  type: string;
 }
 
-const SAMPLE_LIVE_TESTIMONIALS: ToastData[] = [
-  {
-    id: 't1',
-    name: 'Dennis K.',
-    phone: '0712***678',
-    action: 'cashed out via M-Pesa',
-    amount: 'KES 3,500',
-    timeAgo: 'Just now',
-    type: 'withdrawal',
-  },
-  {
-    id: 't2',
-    name: 'Faith W.',
-    phone: '0722***410',
-    action: 'won on Lucky Wheel',
-    amount: 'KES 1,000',
-    timeAgo: '28s ago',
-    type: 'spin',
-  },
-  {
-    id: 't3',
-    name: 'Kevin O.',
-    phone: '0745***890',
-    action: 'received Level 1 Affiliate Bonus',
-    amount: 'KES 500',
-    timeAgo: '45s ago',
-    type: 'referral',
-  },
-  {
-    id: 't4',
-    name: 'Grace M.',
-    phone: '0790***231',
-    action: 'completed Kenya Tech Survey',
-    amount: 'KES 250',
-    timeAgo: '1m ago',
-    type: 'task',
-  },
-  {
-    id: 't5',
-    name: 'Brian W.',
-    phone: '0733***554',
-    action: 'withdrew via M-Pesa Instant',
-    amount: 'KES 5,200',
-    timeAgo: '2m ago',
-    type: 'withdrawal',
-  },
-  {
-    id: 't6',
-    name: 'Mercy A.',
-    phone: '0701***992',
-    action: 'completed Trivia Task',
-    amount: 'KES 180',
-    timeAgo: '3m ago',
-    type: 'task',
-  },
-];
-
 export const FloatingToast: React.FC = () => {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentToast, setCurrentToast] = useState<ToastData>(() => {
+    const item = generateSingleBotActivity(0);
+    return {
+      id: item.id,
+      name: item.memberName ? `${item.memberName.split(' ')[0]} ${item.memberName.split(' ')[1]?.[0] || ''}.` : `Member ${item.phone.slice(0, 4)}`,
+      phone: item.phone,
+      action: item.actionTitle || 'cashed out via M-Pesa',
+      amount: `KES ${item.amount.toLocaleString()}`,
+      timeAgo: 'Just now',
+      type: item.type,
+    };
+  });
   const [isVisible, setIsVisible] = useState(true);
   const [isDismissed, setIsDismissed] = useState(false);
   const [animKey, setAnimKey] = useState(0);
@@ -79,16 +34,25 @@ export const FloatingToast: React.FC = () => {
     const interval = setInterval(() => {
       setIsVisible(false);
       setTimeout(() => {
-        setCurrentIndex((prev) => (prev + 1) % SAMPLE_LIVE_TESTIMONIALS.length);
+        const item = generateSingleBotActivity(0);
+        setCurrentToast({
+          id: item.id,
+          name: item.memberName ? `${item.memberName.split(' ')[0]} ${item.memberName.split(' ')[1]?.[0] || ''}.` : `Member ${item.phone.slice(0, 4)}`,
+          phone: item.phone,
+          action: item.actionTitle || 'cashed out via M-Pesa',
+          amount: `KES ${item.amount.toLocaleString()}`,
+          timeAgo: 'Just now',
+          type: item.type,
+        });
         setIsVisible(true);
         setAnimKey((prev) => prev + 1);
       }, 350);
-    }, 7000);
+    }, 5500);
 
     return () => clearInterval(interval);
   }, [isDismissed]);
 
-  const toast = SAMPLE_LIVE_TESTIMONIALS[currentIndex];
+  const toast = currentToast;
 
   if (isDismissed || !isVisible) return null;
 

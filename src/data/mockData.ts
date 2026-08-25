@@ -473,6 +473,8 @@ export const TODAY_PRODUCT_AD = getTodayProductAd();
 
 export const INITIAL_PAYHERO_CONFIG: PayHeroConfig = {
   apiKey: 'ph_live_9a87fbc21008d81e',
+  username: 'EnezaEarningsHQ',
+  channelId: '678',
   apiSecret: 'sec_live_4187acbe45802100344',
   serviceId: 'SERV-ENEZA-KE-8821',
   paybillOrTill: '247247',
