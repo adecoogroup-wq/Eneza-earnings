@@ -292,7 +292,7 @@ export const DAILY_PRODUCTS_CATALOG: DailyProductItem[] = [
     id: 'prod_01',
     dayBadge: 'Sunday Luxury Super Resort',
     title: 'Super Luxury Resort & Private Holiday Haven',
-    brand: 'Earnwave Solutions Real Estate',
+    brand: 'Eneza Earnings Real Estate',
     category: 'Luxury Resorts & Real Estate',
     targetViewsRate: 'KES 100 per status viewer',
     headlineMain: 'SUPER RESORT',
@@ -308,16 +308,16 @@ export const DAILY_PRODUCTS_CATALOG: DailyProductItem[] = [
       'Maximum Security',
       'Favourable Services'
     ],
-    footerManagedBy: 'PROPERTY MANAGED BY EARNWAVE SOLUTIONS',
-    caption: `🏖️ EARNWAVE SOLUTIONS - SUPER RESORT FOR SALE! 🏖️\nAcquire this world-class luxury resort featuring infinity pool, recreational center, gym scheme, ample parking, and maximum 24/7 security!\n\n✨ Newly Built | Ready Freehold Title Deeds | Turnkey Investment\n💰 Target rate KES 100 per viewer. Share to earn today!\n👉 Inquiries and official site bookings managed exclusively by Earnwave Solutions! #EarnwaveSolutions #EnezaEarnings`,
+    footerManagedBy: 'PROPERTY MANAGED BY ENEZA EARNINGS',
+    caption: `🏖️ ENEZA EARNINGS - SUPER RESORT FOR SALE! 🏖️\nAcquire this world-class luxury resort featuring infinity pool, recreational center, gym scheme, ample parking, and maximum 24/7 security!\n\n✨ Newly Built | Ready Freehold Title Deeds | Turnkey Investment\n💰 Target rate KES 100 per viewer. Share to earn today!\n👉 Inquiries and official site bookings managed exclusively by Eneza Earnings! #EnezaEarnings`,
     imageBanner: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=900&auto=format&fit=crop&q=80',
-    downloadFileName: 'earnwave_super_resort_for_sale.jpg'
+    downloadFileName: 'eneza_super_resort_for_sale.jpg'
   },
   {
     id: 'prod_02',
     dayBadge: 'Monday Titanium Flagship',
     title: 'Brand New Apple iPhone 16 Pro Max 1TB Titanium Edition',
-    brand: 'Earnwave Solutions Tech MegaStore',
+    brand: 'Eneza Earnings Tech MegaStore',
     category: 'Flagship Mobile Phones',
     targetViewsRate: 'KES 100 per status viewer',
     headlineMain: 'IPHONE 16 PRO MAX',
@@ -333,16 +333,16 @@ export const DAILY_PRODUCTS_CATALOG: DailyProductItem[] = [
       '1-Yr Apple Warranty',
       'Same-Day Delivery'
     ],
-    footerManagedBy: 'PRODUCTS MANAGED BY EARNWAVE SOLUTIONS',
-    caption: `📱 EARNWAVE SOLUTIONS - FLASH SALE: 50% OFF IPHONE 16 PRO MAX! 📱\nBrand new genuine Apple iPhone 16 Pro Max (1TB Grade 5 Titanium) with 1-Year Official AppleCare Warranty, Free 35W Fast Charger & MagSafe Case!\n\n⚡ A18 Pro Bionic Chip | 48MP Pro Fusion Camera | All-Day Battery Life\n✨ Lowest price in Kenya guaranteed today only on Eneza Marketplace!\n👉 Free same-day delivery countrywide with Lipa na M-Pesa. Order directly on the Eneza Platform! #EarnwaveSolutions`,
+    footerManagedBy: 'PRODUCTS MANAGED BY ENEZA EARNINGS',
+    caption: `📱 ENEZA EARNINGS - FLASH SALE: 50% OFF IPHONE 16 PRO MAX! 📱\nBrand new genuine Apple iPhone 16 Pro Max (1TB Grade 5 Titanium) with 1-Year Official AppleCare Warranty, Free 35W Fast Charger & MagSafe Case!\n\n⚡ A18 Pro Bionic Chip | 48MP Pro Fusion Camera | All-Day Battery Life\n✨ Lowest price in Kenya guaranteed today only on Eneza Marketplace!\n👉 Free same-day delivery countrywide with Lipa na M-Pesa. Order directly on the Eneza Platform! #EnezaEarnings`,
     imageBanner: 'https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=900&auto=format&fit=crop&q=80',
-    downloadFileName: 'earnwave_iphone16_promax_sale.jpg'
+    downloadFileName: 'eneza_iphone16_promax_sale.jpg'
   },
   {
     id: 'prod_03',
     dayBadge: 'Tuesday Ultra Computing',
     title: 'Apple M4 Pro MacBook Pro 16" & High-Performance Laptops',
-    brand: 'Earnwave Solutions Tech MegaStore',
+    brand: 'Eneza Earnings Tech MegaStore',
     category: 'Premium Laptops & Computing',
     targetViewsRate: 'KES 100 per status viewer',
     headlineMain: 'M4 PRO MACBOOK',
@@ -358,16 +358,16 @@ export const DAILY_PRODUCTS_CATALOG: DailyProductItem[] = [
       'Free Leather Sleeve',
       'Full Official Warranty'
     ],
-    footerManagedBy: 'PRODUCTS MANAGED BY EARNWAVE SOLUTIONS',
-    caption: `💻 EARNWAVE SOLUTIONS - M4 PRO MACBOOK PRO WORKSTATIONS! 💻\nBlazing-fast M4 Pro MacBook Pro 16" (36GB Unified Memory / 1TB SSD) engineered for Heavy Coding, 8K Video Editing & Creative Work!\n\n⚡ Liquid Retina XDR 120Hz Display | 22-Hour Battery Life | MagSafe 3\n🎁 Includes Free Leather Sleeve & USB-C Multi-Port Hub.\n🚀 Order today with instant M-Pesa clearance on Earnwave Platform! #EarnwaveSolutions`,
+    footerManagedBy: 'PRODUCTS MANAGED BY ENEZA EARNINGS',
+    caption: `💻 ENEZA EARNINGS - M4 PRO MACBOOK PRO WORKSTATIONS! 💻\nBlazing-fast M4 Pro MacBook Pro 16" (36GB Unified Memory / 1TB SSD) engineered for Heavy Coding, 8K Video Editing & Creative Work!\n\n⚡ Liquid Retina XDR 120Hz Display | 22-Hour Battery Life | MagSafe 3\n🎁 Includes Free Leather Sleeve & USB-C Multi-Port Hub.\n🚀 Order today with instant M-Pesa clearance on Eneza Platform! #EnezaEarnings`,
     imageBanner: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=900&auto=format&fit=crop&q=80',
-    downloadFileName: 'earnwave_macbook_pro_m4_sale.jpg'
+    downloadFileName: 'eneza_macbook_pro_m4_sale.jpg'
   },
   {
     id: 'prod_04',
     dayBadge: 'Wednesday AI Mobile Revolution',
     title: 'Samsung Galaxy S25 Ultra 5G AI Flagship Smartphone',
-    brand: 'Earnwave Solutions Electronics',
+    brand: 'Eneza Earnings Electronics',
     category: 'Latest Mobile Phones',
     targetViewsRate: 'KES 100 per status viewer',
     headlineMain: 'SAMSUNG S25 ULTRA',
@@ -383,16 +383,16 @@ export const DAILY_PRODUCTS_CATALOG: DailyProductItem[] = [
       'Corning Armor Glass',
       'Free Galaxy Buds Pro'
     ],
-    footerManagedBy: 'PRODUCTS MANAGED BY EARNWAVE SOLUTIONS',
-    caption: `📱 EARNWAVE SOLUTIONS - SAMSUNG GALAXY S25 ULTRA 5G RELEASE! 📱\nExperience the next generation of mobile AI with the Snapdragon 8 Elite, 200MP Quad Zoom Camera & Built-in S-Pen!\n\n⚡ Titanium Armor Frame | Corning Gorilla Armor Anti-Reflective Glass\n💰 Exclusive 35% discount for verified Eneza members.\n🚚 Instant dispatch & free insured shipping across all 47 counties! #EarnwaveSolutions`,
+    footerManagedBy: 'PRODUCTS MANAGED BY ENEZA EARNINGS',
+    caption: `📱 ENEZA EARNINGS - SAMSUNG GALAXY S25 ULTRA 5G RELEASE! 📱\nExperience the next generation of mobile AI with the Snapdragon 8 Elite, 200MP Quad Zoom Camera & Built-in S-Pen!\n\n⚡ Titanium Armor Frame | Corning Gorilla Armor Anti-Reflective Glass\n💰 Exclusive 35% discount for verified Eneza members.\n🚚 Instant dispatch & free insured shipping across all 47 counties! #EnezaEarnings`,
     imageBanner: 'https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?w=900&auto=format&fit=crop&q=80',
-    downloadFileName: 'earnwave_samsung_s25_ultra_sale.jpg'
+    downloadFileName: 'eneza_samsung_s25_ultra_sale.jpg'
   },
   {
     id: 'prod_05',
     dayBadge: 'Thursday Luxury Living',
     title: 'Italian Royal Velvet Curved Modular Sectional & Living Room Furniture',
-    brand: 'Earnwave Solutions Luxury Decor',
+    brand: 'Eneza Earnings Luxury Decor',
     category: 'Luxurious Furnitures',
     targetViewsRate: 'KES 100 per status viewer',
     headlineMain: 'ROYAL VELVET SOFA',
@@ -408,16 +408,16 @@ export const DAILY_PRODUCTS_CATALOG: DailyProductItem[] = [
       'Orthopedic Comfort',
       'Free White-Glove Setup'
     ],
-    footerManagedBy: 'PROPERTY MANAGED BY EARNWAVE SOLUTIONS',
-    caption: `🛋️ EARNWAVE SOLUTIONS - ITALIAN ROYAL VELVET SECTIONAL SOFA! 🛋️\nTransform your home with our handcrafted 7-seater curved modular velvet sectional, gold metal accents & high-density orthopedic comfort cushions!\n\n✨ Water-repellent fabric | Solid mahogany hardwood frame | Ergonomic luxury\n🏷️ Huge 40% OFF Home Makeover Sale today!\n🚚 White-glove doorstep delivery and free assembly included nationwide! #EarnwaveSolutions`,
+    footerManagedBy: 'PROPERTY MANAGED BY ENEZA EARNINGS',
+    caption: `🛋️ ENEZA EARNINGS - ITALIAN ROYAL VELVET SECTIONAL SOFA! 🛋️\nTransform your home with our handcrafted 7-seater curved modular velvet sectional, gold metal accents & high-density orthopedic comfort cushions!\n\n✨ Water-repellent fabric | Solid mahogany hardwood frame | Ergonomic luxury\n🏷️ Huge 40% OFF Home Makeover Sale today!\n🚚 White-glove doorstep delivery and free assembly included nationwide! #EnezaEarnings`,
     imageBanner: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=900&auto=format&fit=crop&q=80',
-    downloadFileName: 'earnwave_royal_velvet_sofa_sale.jpg'
+    downloadFileName: 'eneza_royal_velvet_sofa_sale.jpg'
   },
   {
     id: 'prod_06',
     dayBadge: 'Friday Prime Mansions',
     title: 'Modern 5-Bedroom Luxury Smart Villa in Karen & Runda (Gated Estate)',
-    brand: 'Earnwave Solutions Prime Real Estate',
+    brand: 'Eneza Earnings Prime Real Estate',
     category: 'Luxury Houses & Mansions',
     targetViewsRate: 'KES 100 per status viewer',
     headlineMain: '5-BEDROOM SMART VILLA',
@@ -433,16 +433,16 @@ export const DAILY_PRODUCTS_CATALOG: DailyProductItem[] = [
       'Smart Automation',
       'Clean Freehold Title'
     ],
-    footerManagedBy: 'PROPERTY MANAGED BY EARNWAVE SOLUTIONS',
-    caption: `🏡 EARNWAVE SOLUTIONS - PRIME 5-BEDROOM SMART LUXURY VILLA! 🏡\nArchitectural masterpiece on 0.5 Acre in secure gated community featuring heated infinity pool, private cinema room, rooftop lounge & smart home automation!\n\n📍 Prime Karen & Runda scenic locations with Ready Clean Title Deeds.\n💎 Flexible Lipa Pole Pole financing options available!\n✨ Book your VIP private tour directly on the Platform today! #EarnwaveSolutions`,
+    footerManagedBy: 'PROPERTY MANAGED BY ENEZA EARNINGS',
+    caption: `🏡 ENEZA EARNINGS - PRIME 5-BEDROOM SMART LUXURY VILLA! 🏡\nArchitectural masterpiece on 0.5 Acre in secure gated community featuring heated infinity pool, private cinema room, rooftop lounge & smart home automation!\n\n📍 Prime Karen & Runda scenic locations with Ready Clean Title Deeds.\n💎 Flexible Lipa Pole Pole financing options available!\n✨ Book your VIP private tour directly on the Platform today! #EnezaEarnings`,
     imageBanner: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=900&auto=format&fit=crop&q=80',
-    downloadFileName: 'earnwave_luxury_smart_villa_sale.jpg'
+    downloadFileName: 'eneza_luxury_smart_villa_sale.jpg'
   },
   {
     id: 'prod_07',
     dayBadge: 'Saturday Royal Bedroom Suite',
     title: 'Bespoke Luxury Master Bedroom King Suite & Gold Accent Furnishings',
-    brand: 'Earnwave Solutions Luxury Living',
+    brand: 'Eneza Earnings Luxury Living',
     category: 'Luxurious Furnitures',
     targetViewsRate: 'KES 100 per status viewer',
     headlineMain: 'ROYAL MASTER SUITE',
@@ -458,10 +458,10 @@ export const DAILY_PRODUCTS_CATALOG: DailyProductItem[] = [
       'Ambient LED Lighting',
       'Free Delivery & Fitting'
     ],
-    footerManagedBy: 'PROPERTY MANAGED BY EARNWAVE SOLUTIONS',
-    caption: `👑 EARNWAVE SOLUTIONS - BESPOKE ROYAL KING MASTER BEDROOM SUITE! 👑\nElevate your bedroom with an Emperor King tufted velvet bedframe, floating marble nightstands, dresser mirror & memory foam orthopedic mattress!\n\n✨ Solid oak craftsmanship | Brass gold accents | Built-in ambient LED lighting\n🏷️ 30% Flash Weekend Discount on all bespoke furniture orders.\n📦 Safe countrywide delivery and complimentary installation! #EarnwaveSolutions`,
+    footerManagedBy: 'PROPERTY MANAGED BY ENEZA EARNINGS',
+    caption: `👑 ENEZA EARNINGS - BESPOKE ROYAL KING MASTER BEDROOM SUITE! 👑\nElevate your bedroom with an Emperor King tufted velvet bedframe, floating marble nightstands, dresser mirror & memory foam orthopedic mattress!\n\n✨ Solid oak craftsmanship | Brass gold accents | Built-in ambient LED lighting\n🏷️ 30% Flash Weekend Discount on all bespoke furniture orders.\n📦 Safe countrywide delivery and complimentary installation! #EnezaEarnings`,
     imageBanner: 'https://images.unsplash.com/photo-1616486338812-3dadae4b4ace?w=900&auto=format&fit=crop&q=80',
-    downloadFileName: 'earnwave_bespoke_royal_bedroom_suite.jpg'
+    downloadFileName: 'eneza_bespoke_royal_bedroom_suite.jpg'
   }
 ];
 

@@ -31,7 +31,7 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
         'Maximum Security',
         'Favourable Services',
       ];
-  const managedBy = product.footerManagedBy || 'PROPERTY MANAGED BY EARNWAVE SOLUTIONS';
+  const managedBy = product.footerManagedBy || 'PROPERTY MANAGED BY ENEZA EARNINGS';
 
   // High-Res Canvas Exporter (1080x1080px crisp flyer)
   const handleExportFlyer = () => {
@@ -90,16 +90,16 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
       ctx.fill();
       ctx.restore();
 
-      // Brand Header: EARNWAVE / SOLUTIONS
+      // Brand Header: ENEZA / EARNINGS
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffffff';
       ctx.font = '900 68px "Impact", "Arial Black", sans-serif';
-      ctx.fillText('EARNWAVE', 540, 110);
+      ctx.fillText('ENEZA', 540, 110);
 
-      // < SOLUTIONS >
+      // < EARNINGS >
       ctx.fillStyle = '#facc15';
       ctx.font = '800 30px sans-serif';
-      ctx.fillText('◀  SOLUTIONS  ▶', 540, 160);
+      ctx.fillText('◀  EARNINGS  ▶', 540, 160);
 
       // Main Headline (Yellow text with dark shadow)
       ctx.textAlign = 'left';
@@ -252,15 +252,15 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
           </div>
         </div>
 
-        {/* TOP BRAND HEADER: EARNWAVE SOLUTIONS */}
+        {/* TOP BRAND HEADER: ENEZA EARNINGS */}
         <div className="relative z-10 text-center pt-0.5">
           <h3 className="text-3xl sm:text-4xl font-black tracking-tight text-white uppercase drop-shadow-[0_4px_6px_rgba(0,0,0,0.9)] font-sans">
-            EARNWAVE
+            ENEZA
           </h3>
           <div className="inline-flex items-center justify-center gap-1 text-xs font-black text-amber-400 tracking-widest mt-0.5 drop-shadow-md">
             <span>◀</span>
             <span className="text-amber-400 font-extrabold uppercase text-[11px] sm:text-xs tracking-wider">
-              SOLUTIONS
+              EARNINGS
             </span>
             <span>▶</span>
           </div>

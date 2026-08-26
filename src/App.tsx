@@ -162,7 +162,7 @@ export default function App() {
     };
   });
 
-  // Dark / Light Mode State (Defaults to true matching EarnWave dark design)
+  // Dark / Light Mode State (Defaults to true matching Eneza Earnings dark design)
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() =>
     getStored('dark_mode', true)
   );
