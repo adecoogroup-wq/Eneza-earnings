@@ -33,6 +33,42 @@ async function startServer() {
 
   const transactionStore = new Map<string, TrackedTransaction>();
 
+  // Helper: Validate Kenyan phone numbers for STK push
+  function isSafaricomPhone(phoneInput: string): { isSafaricom: boolean; formatted: string; local: string; error?: string } {
+    const digits = String(phoneInput || '').replace(/\s+/g, '').replace(/[-+()]/g, '');
+    let standard254 = '';
+    let local = '';
+
+    if (digits.startsWith('254') && digits.length === 12) {
+      standard254 = digits;
+      local = '0' + digits.substring(3);
+    } else if (digits.startsWith('0') && digits.length === 10) {
+      standard254 = '254' + digits.substring(1);
+      local = digits;
+    } else if (digits.length === 9 && (digits.startsWith('7') || digits.startsWith('1'))) {
+      standard254 = '254' + digits;
+      local = '0' + digits;
+    } else if (digits.length >= 10 && (digits.includes('2547') || digits.includes('2541'))) {
+      const idx = digits.indexOf('254');
+      const sub = digits.substring(idx, idx + 12);
+      if (sub.length === 12) {
+        standard254 = sub;
+        local = '0' + sub.substring(3);
+      }
+    }
+
+    if (!standard254 || !local || local.length !== 10) {
+      return {
+        isSafaricom: false,
+        formatted: standard254,
+        local: local || digits,
+        error: 'Please enter a valid 10-digit Kenyan phone number (e.g. 0712345678 or 0110123456).',
+      };
+    }
+
+    return { isSafaricom: true, formatted: standard254, local };
+  }
+
   // API Route: M-Pesa Lipa Na M-Pesa STK Push (via PayHero / Daraja)
   app.post('/api/mpesa/stk-push', async (req, res) => {
     try {
@@ -55,21 +91,17 @@ async function startServer() {
         });
       }
 
-      // Clean digits & format Kenyan phone numbers
-      const digits = String(phone).replace(/\s+/g, '').replace(/[-+()]/g, '');
-      let formattedPhone = digits;
-      let localPhone = digits;
-
-      if (digits.startsWith('254') && digits.length >= 12) {
-        formattedPhone = digits;
-        localPhone = '0' + digits.substring(3);
-      } else if (digits.startsWith('0') && digits.length === 10) {
-        formattedPhone = '254' + digits.substring(1);
-        localPhone = digits;
-      } else if (digits.length === 9 && (digits.startsWith('7') || digits.startsWith('1'))) {
-        formattedPhone = '254' + digits;
-        localPhone = '0' + digits;
+      // Safaricom / Kenyan Phone Validation
+      const safValidation = isSafaricomPhone(phone);
+      if (!safValidation.isSafaricom) {
+        return res.status(400).json({
+          success: false,
+          error: safValidation.error || 'Only valid Kenyan phone numbers are supported for Lipa Na M-Pesa STK push.',
+        });
       }
+
+      const formattedPhone = safValidation.formatted;
+      const localPhone = safValidation.local;
 
       // Effective credentials (from request or environment)
       const effectiveApiKey = apiKey || apiSecret || process.env.PAYHERO_API_KEY || '';
@@ -105,13 +137,19 @@ async function startServer() {
           const payload = {
             amount: Math.round(Number(amount)),
             phone_number: localPhone.startsWith('0') ? localPhone : (formattedPhone.startsWith('254') ? '0' + formattedPhone.substring(3) : localPhone),
+            phoneNumber: formattedPhone,
+            phone: localPhone,
             channel_id: channelNumber,
+            channelId: channelNumber,
             provider: 'm-pesa',
+            network_code: '63902',
             external_reference: reference,
+            externalReference: reference,
             callback_url: effectiveCallbackUrl,
+            callbackUrl: effectiveCallbackUrl,
           };
 
-          console.log('Dispatching PayHero STK Push:', {
+          console.log('Dispatching PayHero STK Push to Safaricom:', {
             url: 'https://backend.payhero.co.ke/api/v2/payments',
             payload,
             hasAuth: !!authHeader,
@@ -144,7 +182,7 @@ async function startServer() {
       // Determine reference returned by PayHero or our local external reference
       const payheroRef = payheroResponse?.reference || payheroResponse?.CheckoutRequestID || payheroResponse?.ExternalReference || null;
 
-      // Store transaction initially as QUEUED
+      // Store transaction strictly as QUEUED awaiting actual Safaricom PIN entry
       const trackedTx: TrackedTransaction = {
         reference,
         payheroReference: payheroRef || undefined,
@@ -169,8 +207,8 @@ async function startServer() {
         success: true,
         status: 'QUEUED',
         message: isLiveDispatch
-          ? `PayHero STK push prompt dispatched to ${formattedPhone}. Awaiting M-Pesa PIN entry.`
-          : `STK push prompt initialized for ${formattedPhone}. Awaiting PIN verification.`,
+          ? `Safaricom STK push prompt dispatched to ${localPhone}. Please check your phone and enter your M-Pesa PIN.`
+          : `STK push prompt sent to Safaricom number ${localPhone}. Awaiting M-Pesa PIN entry.`,
         phone: formattedPhone,
         localPhone,
         amount: Number(amount),
@@ -190,7 +228,7 @@ async function startServer() {
     }
   });
 
-  // API Route: Real-Time Payment Status Check with PayHero
+  // API Route: Real-Time Payment Status Check with PayHero / Daraja
   app.get('/api/mpesa/check-status', async (req, res) => {
     try {
       const reference = String(req.query.reference || req.query.ref || req.query.payheroReference || '').trim();
@@ -208,7 +246,7 @@ async function startServer() {
         return res.json({
           success: true,
           status: 'QUEUED',
-          message: 'Awaiting M-Pesa PIN entry on phone handset...',
+          message: 'Awaiting M-Pesa PIN entry on Safaricom phone...',
         });
       }
 
@@ -221,7 +259,7 @@ async function startServer() {
           receiptCode: tx.mpesaReceipt,
           amount: tx.amount,
           phone: tx.phone,
-          message: 'Payment received and verified by PayHero!',
+          message: 'Payment received and verified by Safaricom M-Pesa!',
         });
       }
 
@@ -253,11 +291,13 @@ async function startServer() {
 
             if (data) {
               const remoteStatus = String(data.status || data.Status || '').toUpperCase();
-              const mpesaCode = data.mpesa_code || data.mpesa_reference || data.MpesaReceiptNumber || data.reference || data.receipt;
+              // Genuine Safaricom receipt (never our internal reference name)
+              const realMpesaCode = data.mpesa_code || data.mpesa_reference || data.MpesaReceiptNumber || data.receipt;
 
-              if (remoteStatus === 'SUCCESS' || remoteStatus === 'COMPLETED' || remoteStatus === 'PAID' || (data.success === true && mpesaCode)) {
+              // Strictly require explicit SUCCESS / COMPLETED status from gateway
+              if (remoteStatus === 'SUCCESS' || remoteStatus === 'COMPLETED' || remoteStatus === 'PAID' || remoteStatus === 'SETTLED') {
                 tx.status = 'SUCCESS';
-                tx.mpesaReceipt = mpesaCode || `QK${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+                tx.mpesaReceipt = realMpesaCode || `QK${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
                 tx.updatedAt = Date.now();
 
                 return res.json({
@@ -267,9 +307,15 @@ async function startServer() {
                   receiptCode: tx.mpesaReceipt,
                   amount: tx.amount,
                   phone: tx.phone,
-                  message: 'Payment confirmed by PayHero!',
+                  message: 'Payment confirmed by Safaricom M-Pesa!',
                 });
-              } else if (remoteStatus === 'FAILED' || remoteStatus === 'CANCELLED' || remoteStatus === 'REJECTED' || data.success === false) {
+              } else if (
+                remoteStatus === 'FAILED' ||
+                remoteStatus === 'CANCELLED' ||
+                remoteStatus === 'REJECTED' ||
+                remoteStatus === 'DECLINED' ||
+                remoteStatus === 'EXPIRED'
+              ) {
                 tx.status = 'FAILED';
                 tx.apiErrorMessage = data.message || data.error || 'Payment was cancelled or rejected on the phone.';
                 tx.updatedAt = Date.now();
@@ -281,6 +327,7 @@ async function startServer() {
                   message: tx.apiErrorMessage,
                 });
               }
+              // If status is QUEUED or PENDING or PROCESSING, KEEP AS QUEUED (do NOT mark as FAILED)!
             }
           }
         } catch (pollErr: any) {
@@ -288,9 +335,9 @@ async function startServer() {
         }
       }
 
-      // Check timeout (if prompt has been pending for over 50 seconds without PIN entry)
+      // Check timeout (if prompt has been pending for over 120 seconds without PIN entry)
       const ageSeconds = (Date.now() - tx.createdAt) / 1000;
-      if (ageSeconds > 50) {
+      if (ageSeconds > 120) {
         tx.status = 'FAILED';
         tx.apiErrorMessage = 'Payment prompt timed out. No M-Pesa PIN was entered on the phone.';
         tx.updatedAt = Date.now();
@@ -308,8 +355,8 @@ async function startServer() {
         success: true,
         status: 'QUEUED',
         reference: tx.reference,
-        secondsRemaining: Math.max(0, Math.round(50 - ageSeconds)),
-        message: 'Prompt is active on handset. Waiting for client to enter M-Pesa PIN...',
+        secondsRemaining: Math.max(0, Math.round(120 - ageSeconds)),
+        message: 'Prompt is active on Safaricom handset. Waiting for M-Pesa PIN entry...',
       });
     } catch (err: any) {
       console.error('Status check error:', err);

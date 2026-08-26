@@ -51,7 +51,6 @@ import { WithdrawalModal } from './components/Modals/WithdrawalModal';
 import { TaskExecutionModal } from './components/Modals/TaskExecutionModal';
 import { ReceiptModal } from './components/Modals/ReceiptModal';
 import { NotificationsDrawer } from './components/Modals/NotificationsDrawer';
-import { FloatingToast } from './components/FloatingToast';
 import confetti from 'canvas-confetti';
 
 export default function App() {
@@ -179,6 +178,7 @@ export default function App() {
 
   // Modal States
   const [isDepositOpen, setIsDepositOpen] = useState(false);
+  const [depositDefaultAmount, setDepositDefaultAmount] = useState<number>(500);
   const [isActivationMode, setIsActivationMode] = useState(false);
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false);
   const [selectedTaskForExec, setSelectedTaskForExec] = useState<EarningTask | null>(null);
@@ -280,11 +280,33 @@ export default function App() {
   };
 
   // ==========================================
-  // WHATSAPP PACKAGE PURCHASE
+  // WHATSAPP PACKAGE PURCHASE (STRICT DEPOSIT REQUIRED FIRST)
   // ==========================================
   const handlePurchaseWhatsAppPackage = (pkg: WhatsAppPackageItem) => {
     if (!currentUser) return;
 
+    const userDepositBal = currentUser.depositBalance || 0;
+
+    // Check if user has deposited enough funds first
+    if (userDepositBal < pkg.price) {
+      const shortfall = pkg.price - userDepositBal;
+      setDepositDefaultAmount(shortfall > 0 ? shortfall : pkg.price);
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+
+      const notif: NotificationItem = {
+        id: `notif_${Date.now()}`,
+        title: 'Deposit Required First',
+        message: `All users must deposit first. Please deposit KES ${shortfall.toLocaleString()} to complete the purchase of ${pkg.name}.`,
+        time: 'Just now',
+        isRead: false,
+        type: 'alert',
+      };
+      setNotifications((prev) => [notif, ...prev]);
+      return;
+    }
+
+    // User has sufficient deposit balance - deduct and activate
     const receipt = generateReceipt();
     const newTx: Transaction = {
       id: `tx_wa_pkg_${Date.now()}`,
@@ -297,7 +319,7 @@ export default function App() {
       fee: 0,
       netAmount: pkg.price,
       status: 'completed',
-      description: `Activated ${pkg.name} (KES ${(pkg.cashbackBonus || 0).toLocaleString()} Cashback Credited)`,
+      description: `Purchased ${pkg.name} from Deposit Balance (+KES ${(pkg.cashbackBonus || 0).toLocaleString()} Cashback Credited)`,
       createdAt: new Date().toISOString(),
     };
 
@@ -316,8 +338,9 @@ export default function App() {
 
     const updatedUser: User = {
       ...currentUser,
+      depositBalance: Math.max(0, userDepositBal - pkg.price),
       activeWhatsAppPackage: pkg.id,
-      pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
+      pendingCashbackTotal: (currentUser.pendingCashbackTotal || 0) + pkg.cashbackBonus,
     };
 
     setCurrentUser(updatedUser);
@@ -327,7 +350,7 @@ export default function App() {
     const newNotif: NotificationItem = {
       id: `notif_${Date.now()}`,
       title: `${pkg.name} Activated!`,
-      message: `Receipt ${receipt}. KES ${(pkg.cashbackBonus || 0).toLocaleString()} Cashback Bonus has been credited to your Cashback Vault (Claim with 40% deposit balance).`,
+      message: `Receipt ${receipt}. KES ${pkg.price.toLocaleString()} deducted from your Deposit Balance. KES ${(pkg.cashbackBonus || 0).toLocaleString()} 200% Cashback Bonus has been credited to your Cashback Vault!`,
       time: 'Just now',
       isRead: false,
       type: 'money',
@@ -587,13 +610,33 @@ export default function App() {
   };
 
   // ==========================================
-  // 4 PIPELINE SEQUENTIAL PACKAGE ACTIVATIONS
+  // 4 PIPELINE SEQUENTIAL PACKAGE ACTIVATIONS (STRICT DEPOSIT BALANCE FIRST)
   // ==========================================
 
   // Step 1: Authorize Package (5,000 -> Cashback 10,000)
   const handleActivateAuthorizePackage = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.authorize;
+    const userDepositBal = currentUser.depositBalance || 0;
+
+    if (userDepositBal < pkg.price) {
+      const shortfall = pkg.price - userDepositBal;
+      setDepositDefaultAmount(shortfall > 0 ? shortfall : pkg.price);
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+
+      const notif: NotificationItem = {
+        id: `notif_${Date.now()}`,
+        title: 'Deposit Required First',
+        message: `Please deposit KES ${shortfall.toLocaleString()} to your Deposit Balance to activate ${pkg.name}.`,
+        time: 'Just now',
+        isRead: false,
+        type: 'alert',
+      };
+      setNotifications((prev) => [notif, ...prev]);
+      return;
+    }
+
     const receipt = generateReceipt();
 
     const authTx: Transaction = {
@@ -607,7 +650,7 @@ export default function App() {
       fee: 0,
       netAmount: pkg.price,
       status: 'completed',
-      description: `Activated ${pkg.name} (Step 1/4 Cleared + KES 10,000 Cashback)`,
+      description: `Activated ${pkg.name} from Deposit Balance (+ KES 10,000 Cashback)`,
       createdAt: new Date().toISOString(),
     };
 
@@ -626,6 +669,7 @@ export default function App() {
 
     const updatedUser: User = {
       ...currentUser,
+      depositBalance: Math.max(0, userDepositBal - pkg.price),
       isAuthorizedPackagePurchased: true,
       pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
     };
@@ -640,6 +684,26 @@ export default function App() {
   const handleActivateUnlockMpesa = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.unlockMpesa;
+    const userDepositBal = currentUser.depositBalance || 0;
+
+    if (userDepositBal < pkg.price) {
+      const shortfall = pkg.price - userDepositBal;
+      setDepositDefaultAmount(shortfall > 0 ? shortfall : pkg.price);
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+
+      const notif: NotificationItem = {
+        id: `notif_${Date.now()}`,
+        title: 'Deposit Required First',
+        message: `Please deposit KES ${shortfall.toLocaleString()} to your Deposit Balance to activate ${pkg.name}.`,
+        time: 'Just now',
+        isRead: false,
+        type: 'alert',
+      };
+      setNotifications((prev) => [notif, ...prev]);
+      return;
+    }
+
     const receipt = generateReceipt();
 
     const unlockTx: Transaction = {
@@ -653,7 +717,7 @@ export default function App() {
       fee: 0,
       netAmount: pkg.price,
       status: 'completed',
-      description: `Activated ${pkg.name} (Step 2/4 Cleared + KES 14,000 Cashback)`,
+      description: `Activated ${pkg.name} from Deposit Balance (+ KES 14,000 Cashback)`,
       createdAt: new Date().toISOString(),
     };
 
@@ -672,6 +736,7 @@ export default function App() {
 
     const updatedUser: User = {
       ...currentUser,
+      depositBalance: Math.max(0, userDepositBal - pkg.price),
       isUnlockMpesaPurchased: true,
       pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
     };
@@ -686,6 +751,26 @@ export default function App() {
   const handleActivateAutomationPackage = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.automation;
+    const userDepositBal = currentUser.depositBalance || 0;
+
+    if (userDepositBal < pkg.price) {
+      const shortfall = pkg.price - userDepositBal;
+      setDepositDefaultAmount(shortfall > 0 ? shortfall : pkg.price);
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+
+      const notif: NotificationItem = {
+        id: `notif_${Date.now()}`,
+        title: 'Deposit Required First',
+        message: `Please deposit KES ${shortfall.toLocaleString()} to your Deposit Balance to activate ${pkg.name}.`,
+        time: 'Just now',
+        isRead: false,
+        type: 'alert',
+      };
+      setNotifications((prev) => [notif, ...prev]);
+      return;
+    }
+
     const receipt = generateReceipt();
 
     const autoTx: Transaction = {
@@ -699,7 +784,7 @@ export default function App() {
       fee: 0,
       netAmount: pkg.price,
       status: 'completed',
-      description: `Activated ${pkg.name} (+ KES ${(pkg.cashbackBonus).toLocaleString()} Cashback)`,
+      description: `Activated ${pkg.name} from Deposit Balance (+ KES ${(pkg.cashbackBonus).toLocaleString()} Cashback)`,
       createdAt: new Date().toISOString(),
     };
 
@@ -718,6 +803,7 @@ export default function App() {
 
     const updatedUser: User = {
       ...currentUser,
+      depositBalance: Math.max(0, userDepositBal - pkg.price),
       isAutomationPackagePurchased: true,
       pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
     };
@@ -732,6 +818,26 @@ export default function App() {
   const handleActivateVerifiedAgent = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.verifiedAgent;
+    const userDepositBal = currentUser.depositBalance || 0;
+
+    if (userDepositBal < pkg.price) {
+      const shortfall = pkg.price - userDepositBal;
+      setDepositDefaultAmount(shortfall > 0 ? shortfall : pkg.price);
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+
+      const notif: NotificationItem = {
+        id: `notif_${Date.now()}`,
+        title: 'Deposit Required First',
+        message: `Please deposit KES ${shortfall.toLocaleString()} to your Deposit Balance to activate ${pkg.name}.`,
+        time: 'Just now',
+        isRead: false,
+        type: 'alert',
+      };
+      setNotifications((prev) => [notif, ...prev]);
+      return;
+    }
+
     const receipt = generateReceipt();
 
     const agentTx: Transaction = {
@@ -745,7 +851,7 @@ export default function App() {
       fee: 0,
       netAmount: pkg.price,
       status: 'completed',
-      description: `Activated ${pkg.name} (+ KES ${(pkg.cashbackBonus).toLocaleString()} Cashback)`,
+      description: `Activated ${pkg.name} from Deposit Balance (+ KES ${(pkg.cashbackBonus).toLocaleString()} Cashback)`,
       createdAt: new Date().toISOString(),
     };
 
@@ -764,6 +870,7 @@ export default function App() {
 
     const updatedUser: User = {
       ...currentUser,
+      depositBalance: Math.max(0, userDepositBal - pkg.price),
       role: 'verified_agent',
       isVerifiedAgentPurchased: true,
       pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
@@ -779,6 +886,26 @@ export default function App() {
   const handleActivateUniversePackage = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.universe;
+    const userDepositBal = currentUser.depositBalance || 0;
+
+    if (userDepositBal < pkg.price) {
+      const shortfall = pkg.price - userDepositBal;
+      setDepositDefaultAmount(shortfall > 0 ? shortfall : pkg.price);
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+
+      const notif: NotificationItem = {
+        id: `notif_${Date.now()}`,
+        title: 'Deposit Required First',
+        message: `Please deposit KES ${shortfall.toLocaleString()} to your Deposit Balance to activate ${pkg.name}.`,
+        time: 'Just now',
+        isRead: false,
+        type: 'alert',
+      };
+      setNotifications((prev) => [notif, ...prev]);
+      return;
+    }
+
     const receipt = generateReceipt();
 
     const universeTx: Transaction = {
@@ -792,7 +919,7 @@ export default function App() {
       fee: 0,
       netAmount: pkg.price,
       status: 'completed',
-      description: `Activated ${pkg.name} (+ KES ${(pkg.cashbackBonus).toLocaleString()} Cashback)`,
+      description: `Activated ${pkg.name} from Deposit Balance (+ KES ${(pkg.cashbackBonus).toLocaleString()} Cashback)`,
       createdAt: new Date().toISOString(),
     };
 
@@ -811,6 +938,7 @@ export default function App() {
 
     const updatedUser: User = {
       ...currentUser,
+      depositBalance: Math.max(0, userDepositBal - pkg.price),
       isUniversePackagePurchased: true,
       pendingCashbackTotal: currentUser.pendingCashbackTotal + pkg.cashbackBonus,
     };
@@ -827,6 +955,26 @@ export default function App() {
   const handleInvestInPlan = (plan: InvestmentPlan, customAmount?: number) => {
     if (!currentUser) return;
     const amount = customAmount || plan.minDeposit;
+    const userDepositBal = currentUser.depositBalance || 0;
+
+    if (userDepositBal < amount) {
+      const shortfall = amount - userDepositBal;
+      setDepositDefaultAmount(shortfall > 0 ? shortfall : amount);
+      setIsActivationMode(false);
+      setIsDepositOpen(true);
+
+      const notif: NotificationItem = {
+        id: `notif_${Date.now()}`,
+        title: 'Deposit Required First',
+        message: `Please deposit KES ${shortfall.toLocaleString()} to your Deposit Balance to subscribe to ${plan.name}.`,
+        time: 'Just now',
+        isRead: false,
+        type: 'alert',
+      };
+      setNotifications((prev) => [notif, ...prev]);
+      return;
+    }
+
     const receipt = generateReceipt();
 
     const invTx: Transaction = {
@@ -840,7 +988,7 @@ export default function App() {
       fee: 0,
       netAmount: amount,
       status: 'completed',
-      description: `Subscribed to ${plan.name} (300% Monthly Yield Contract)`,
+      description: `Subscribed to ${plan.name} from Deposit Balance (300% Monthly Yield Contract)`,
       createdAt: new Date().toISOString(),
     };
 
@@ -1236,14 +1384,11 @@ export default function App() {
   // If no user is logged in, show Auth Module
   if (!currentUser) {
     return (
-      <>
-        <FloatingToast />
-        <AuthModule
-          onLogin={handleLogin}
-          registeredUsers={users}
-          onRegister={handleRegister}
-        />
-      </>
+      <AuthModule
+        onLogin={handleLogin}
+        registeredUsers={users}
+        onRegister={handleRegister}
+      />
     );
   }
 
@@ -1259,9 +1404,6 @@ export default function App() {
           : 'bg-gradient-to-br from-[#fdebee] via-[#eaf4f7] to-[#e4eef6] text-slate-900'
       } selection:bg-rose-500/20 selection:text-rose-500 font-sans flex transition-colors duration-200`}
     >
-      {/* 0. LIVE FLOATING TESTIMONIAL NOTIFICATION */}
-      <FloatingToast />
-
       {/* 1. SIDEBAR MENU NAVIGATION */}
       <Sidebar
         currentView={currentView}
@@ -1334,6 +1476,11 @@ export default function App() {
               currentUser={currentUser}
               onPurchasePackage={handlePurchaseWhatsAppPackage}
               onSelectPackage={handlePurchaseWhatsAppPackage}
+              onOpenDeposit={(amt) => {
+                setDepositDefaultAmount(amt || 500);
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
               onSwitchView={(v) => setCurrentView(v)}
             />
           )}
@@ -1497,6 +1644,7 @@ export default function App() {
       {isDepositOpen && (
         <MpesaDepositModal
           user={currentUser}
+          defaultAmount={depositDefaultAmount}
           isActivation={isActivationMode}
           payheroConfig={payheroConfig}
           onClose={() => {

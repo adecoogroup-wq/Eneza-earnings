@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { User, Transaction, PayHeroConfig } from '../../types';
-import { Smartphone, X, CheckCircle2, ShieldCheck, AlertCircle, Loader2, RotateCw, RefreshCw } from 'lucide-react';
+import { Smartphone, X, CheckCircle2, ShieldCheck, AlertCircle, Loader2, RotateCw, RefreshCw, Wallet } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { validateSafaricomPhone } from '../../utils/phoneValidation';
 
 interface MpesaDepositModalProps {
   user: User;
@@ -23,7 +24,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
   const [amount, setAmount] = useState<number>(isActivation ? 200 : defaultAmount);
   const [phone, setPhone] = useState<string>(user.phone || '0712345678');
   const [step, setStep] = useState<'form' | 'waiting_for_stk' | 'success' | 'failed'>('form');
-  const [countdown, setCountdown] = useState<number>(45);
+  const [countdown, setCountdown] = useState<number>(55);
   const [generatedTx, setGeneratedTx] = useState<Transaction | null>(null);
   const [isDispatching, setIsDispatching] = useState<boolean>(false);
   const [isCheckingStatus, setIsCheckingStatus] = useState<boolean>(false);
@@ -35,27 +36,10 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
   const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Quick amount selections
-  const quickAmounts = isActivation ? [200] : [250, 500, 1000, 2500, 5000];
+  const quickAmounts = isActivation ? [200] : [250, 500, 1000, 2500, 5000, 7000];
 
-  const cleanAndFormatPhone = (raw: string): { local: string; international: string; isValid: boolean } => {
-    const digits = raw.replace(/\s+/g, '').replace(/[-+()]/g, '');
-    let intl = digits;
-    let loc = digits;
-
-    if (digits.startsWith('254') && digits.length >= 12) {
-      intl = digits;
-      loc = '0' + digits.substring(3);
-    } else if (digits.startsWith('0') && digits.length === 10) {
-      intl = '254' + digits.substring(1);
-      loc = digits;
-    } else if (digits.length === 9 && (digits.startsWith('7') || digits.startsWith('1'))) {
-      intl = '254' + digits;
-      loc = '0' + digits;
-    }
-
-    const isValid = intl.startsWith('254') && (intl.length === 12);
-    return { local: loc, international: intl, isValid };
-  };
+  // Validate Safaricom phone in real-time
+  const phoneValidation = validateSafaricomPhone(phone);
 
   const completePayment = useCallback((receiptCode: string, paidAmount: number, paidPhone: string) => {
     if (pollingTimerRef.current) {
@@ -112,13 +96,13 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
           return true;
         } else if (data.status === 'FAILED') {
           if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-          setFailureReason(data.message || 'Payment prompt was cancelled or incorrect M-Pesa PIN was entered.');
+          setFailureReason(data.message || 'Payment prompt was cancelled or incorrect M-Pesa PIN was entered on the phone.');
           setStep('failed');
           return true;
         } else {
           // Still QUEUED
           if (!silent) {
-            setStatusMessage('Awaiting PIN entry on your phone. Checking PayHero in real-time...');
+            setStatusMessage('Awaiting PIN entry on your Safaricom phone. Checking PayHero in real-time...');
             setTimeout(() => setStatusMessage(null), 3000);
           }
         }
@@ -133,11 +117,16 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
   }, [amount, phone, completePayment]);
 
   const executeStkPush = useCallback(async (targetPhone: string, targetAmount: number) => {
+    const val = validateSafaricomPhone(targetPhone);
+    if (!val.isSafaricom) {
+      setDispatchError(val.errorMessage || 'Only Safaricom M-Pesa numbers (07XX / 011X) are supported.');
+      return;
+    }
+
     setIsDispatching(true);
     setDispatchError(null);
     setStatusMessage(null);
 
-    const { local } = cleanAndFormatPhone(targetPhone);
     const clientRef = `ENEZA-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     setActiveTxReference(clientRef);
 
@@ -147,7 +136,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone: local || targetPhone,
+          phone: val.localPhone,
           amount: Number(targetAmount),
           purpose: isActivation ? 'Account Activation' : 'Wallet Deposit',
           reference: clientRef,
@@ -160,16 +149,23 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
       });
 
       const data = await response.json().catch(() => null);
+      if (!response.ok || (data && data.status === 'FAILED')) {
+        setDispatchError(data?.error || data?.message || 'Failed to dispatch STK push to Safaricom network.');
+        setIsDispatching(false);
+        return;
+      }
+
       if (data && data.reference) {
         setActiveTxReference(data.reference);
       }
+      setIsDispatching(false);
+      setStep('waiting_for_stk');
+      setCountdown(55);
     } catch (e: any) {
-      console.log('STK push dispatch error:', e?.message);
+      console.error('STK push dispatch error:', e?.message);
+      setDispatchError('Network connection error while connecting to Safaricom STK gateway.');
+      setIsDispatching(false);
     }
-
-    setIsDispatching(false);
-    setStep('waiting_for_stk');
-    setCountdown(45);
   }, [payheroConfig, isActivation]);
 
   const handleInitiateSTK = (e: React.FormEvent) => {
@@ -178,9 +174,9 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
       setDispatchError('Minimum deposit amount is KES 50');
       return;
     }
-    const { isValid } = cleanAndFormatPhone(phone);
-    if (!isValid && phone.length < 9) {
-      setDispatchError('Please enter a valid Safaricom or Airtel phone number (e.g. 0712345678)');
+    const val = validateSafaricomPhone(phone);
+    if (!val.isSafaricom) {
+      setDispatchError(val.errorMessage || 'Please enter a valid Safaricom phone number (e.g. 0712345678 or 0110123456). Airtel / Telkom numbers cannot receive M-Pesa STK prompts.');
       return;
     }
 
@@ -203,7 +199,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
           if (prev <= 1) {
             clearInterval(countdownInterval);
             if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-            setFailureReason('STK prompt timed out. No M-Pesa PIN was entered on your phone.');
+            setFailureReason('STK prompt timed out. No M-Pesa PIN was entered on your Safaricom phone.');
             setStep('failed');
             return 0;
           }
@@ -233,7 +229,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
 
         {step === 'form' && (
           <div>
-            <div className="flex items-center gap-3 mb-5">
+            <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                 <Smartphone className="w-6 h-6" />
               </div>
@@ -241,8 +237,19 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
                 <h3 className="text-lg font-bold text-white">
                   {isActivation ? 'Activate Eneza Account' : 'Deposit via Lipa Na M-Pesa'}
                 </h3>
-                <p className="text-xs text-zinc-400">Instant Lipa Na M-Pesa STK Push Prompt</p>
+                <p className="text-xs text-zinc-400">Instant Safaricom M-Pesa STK Push Prompt</p>
               </div>
+            </div>
+
+            {/* Current Deposit Balance Badge */}
+            <div className="mb-4 p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-zinc-400">
+                <Wallet className="w-4 h-4 text-emerald-400" />
+                <span>Current Deposit Balance:</span>
+              </div>
+              <span className="font-mono font-bold text-emerald-400 text-sm">
+                KES {(user.depositBalance || 0).toLocaleString()}
+              </span>
             </div>
 
             {isActivation && (
@@ -256,15 +263,28 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
             )}
 
             {dispatchError && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                <span>{dispatchError}</span>
+              <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                <span className="leading-snug">{dispatchError}</span>
               </div>
             )}
 
             <form onSubmit={handleInitiateSTK} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">M-Pesa Registered Phone Number</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-zinc-400">Safaricom Phone Number</label>
+                  {phone && (
+                    <span
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        phoneValidation.isSafaricom
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                      }`}
+                    >
+                      {phoneValidation.isSafaricom ? '✓ Safaricom M-Pesa' : `✕ ${phoneValidation.network} (Unsupported)`}
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <input
                     type="tel"
@@ -274,13 +294,16 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
                       setPhone(e.target.value);
                       if (dispatchError) setDispatchError(null);
                     }}
-                    placeholder="07XXXXXXXX or 2547XXXXXXXX"
-                    className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-100 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                    placeholder="07XXXXXXXX or 011XXXXXXX"
+                    className={`w-full rounded-lg bg-zinc-950 border px-3.5 py-2.5 text-zinc-100 text-sm font-mono focus:outline-none focus:ring-1 ${
+                      phone && !phoneValidation.isSafaricom
+                        ? 'border-rose-500/60 focus:border-rose-500 focus:ring-rose-500'
+                        : 'border-zinc-800 focus:border-emerald-500 focus:ring-emerald-500'
+                    }`}
                   />
-                  <span className="absolute right-3 top-2.5 text-xs text-emerald-400 font-medium">Safaricom / Airtel</span>
                 </div>
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  An instant M-Pesa PIN prompt will pop up on your phone.
+                  STK prompt will pop up on this Safaricom phone. Other telcos (Airtel, Telkom) are not supported for STK push.
                 </p>
               </div>
 
@@ -319,8 +342,8 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
 
               <div className="p-3 bg-zinc-950/60 rounded-xl border border-zinc-800/80 text-xs text-zinc-400 space-y-1.5">
                 <div className="flex justify-between">
-                  <span>Payment Method:</span>
-                  <span className="font-mono text-zinc-200 font-semibold">Lipa Na M-Pesa Online (STK Push)</span>
+                  <span>Payment Channel:</span>
+                  <span className="font-mono text-zinc-200 font-semibold">Safaricom Lipa Na M-Pesa</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Transaction Fee:</span>
@@ -330,18 +353,18 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
 
               <button
                 type="submit"
-                disabled={isDispatching}
+                disabled={isDispatching || (phone.length >= 9 && !phoneValidation.isSafaricom)}
                 className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-white text-sm shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isDispatching ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>Connecting to M-Pesa...</span>
+                    <span>Connecting to Safaricom M-Pesa...</span>
                   </>
                 ) : (
                   <>
                     <Smartphone className="w-4 h-4" />
-                    <span>Send STK Prompt to My Phone</span>
+                    <span>Send Safaricom STK Push (KES {amount.toLocaleString()})</span>
                   </>
                 )}
               </button>
@@ -365,7 +388,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <h3 className="text-lg font-bold text-white">M-Pesa STK Prompt Sent</h3>
+              <h3 className="text-lg font-bold text-white">Safaricom STK Prompt Sent</h3>
               <p className="text-xs text-zinc-300">
                 Prompt delivered to <strong className="text-emerald-400 font-mono text-sm">{phone}</strong>
               </p>
@@ -375,15 +398,15 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
             <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-left text-xs space-y-2.5">
               <div className="flex items-center gap-2 text-emerald-400 font-semibold pb-1 border-b border-zinc-800">
                 <ShieldCheck className="w-4 h-4" />
-                <span>Enter PIN on your handset:</span>
+                <span>Enter PIN on your Safaricom phone:</span>
               </div>
               <ol className="list-decimal list-inside space-y-1.5 text-zinc-300 text-[11px] leading-relaxed">
-                <li>Check your phone screen for the Safaricom M-Pesa pop-up.</li>
+                <li>Look at your phone screen for the Safaricom M-Pesa pop-up.</li>
                 <li>
                   Confirm payment of <strong className="text-white font-mono">KES {amount.toLocaleString()}</strong>.
                 </li>
                 <li>
-                  Enter your <strong className="text-emerald-400">M-Pesa PIN</strong> and tap Send.
+                  Enter your <strong className="text-emerald-400">M-Pesa PIN</strong> and tap OK / Send.
                 </li>
               </ol>
             </div>
@@ -393,7 +416,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
               <div className="flex items-center justify-between font-mono text-[11px] text-zinc-400 border-b border-zinc-800/80 pb-1.5">
                 <span className="flex items-center gap-1.5 text-zinc-300 font-medium">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  PayHero Live Gateway Status
+                  Safaricom Gateway Polling
                 </span>
                 <span className="text-emerald-400 font-bold font-mono">{countdown}s remaining</span>
               </div>
@@ -401,11 +424,11 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
               <div className="space-y-1.5 text-[11px]">
                 <div className="flex items-center gap-2 text-emerald-400">
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>STK Push prompt dispatched to your phone</span>
+                  <span>STK Push prompt dispatched to {phone}</span>
                 </div>
                 <div className="flex items-center gap-2 text-amber-400">
                   <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-amber-400" />
-                  <span>Awaiting PIN entry on your phone keypad...</span>
+                  <span>Awaiting PIN entry on phone keypad...</span>
                 </div>
               </div>
 
@@ -416,25 +439,27 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
               )}
             </div>
 
-            {/* Check Payment Status button - verifies strictly against PayHero */}
-            <button
-              type="button"
-              disabled={isCheckingStatus}
-              onClick={() => checkStatusWithServer(activeTxReference, false)}
-              className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 font-semibold text-zinc-200 text-xs shadow-md flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
-            >
-              {isCheckingStatus ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-                  <span>Verifying PayHero Receipt...</span>
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Check PayHero Payment Status Now</span>
-                </>
-              )}
-            </button>
+            {/* Live gateway status check button */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                disabled={isCheckingStatus}
+                onClick={() => checkStatusWithServer(activeTxReference, false)}
+                className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 font-semibold text-zinc-200 text-xs shadow-md flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
+              >
+                {isCheckingStatus ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                    <span>Checking Safaricom Gateway Receipt...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Check M-Pesa Payment Status</span>
+                  </>
+                )}
+              </button>
+            </div>
 
             <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800">
               <button
@@ -466,18 +491,19 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <h3 className="text-lg font-bold text-white">Payment Not Received</h3>
+              <h3 className="text-lg font-bold text-white">Payment Not Completed</h3>
               <p className="text-xs text-zinc-300">
                 {failureReason}
               </p>
             </div>
 
             <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-left text-xs space-y-2 text-zinc-400">
-              <span className="font-semibold text-rose-400 block">Why did this happen?</span>
+              <span className="font-semibold text-rose-400 block">Common causes:</span>
               <ul className="list-disc list-inside space-y-1 text-[11px] text-zinc-300">
                 <li>No M-Pesa PIN was entered before the prompt expired.</li>
-                <li>The prompt was dismissed or cancelled on the phone.</li>
-                <li>Incorrect M-Pesa PIN or insufficient M-Pesa account balance.</li>
+                <li>The prompt was cancelled or dismissed on the phone.</li>
+                <li>Incorrect M-Pesa PIN or insufficient M-Pesa funds.</li>
+                <li>SIM card was unreachable or busy.</li>
               </ul>
             </div>
 
@@ -488,7 +514,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
                 className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-white text-xs shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <RotateCw className="w-4 h-4" />
-                <span>Resend STK Push Prompt</span>
+                <span>Resend Safaricom STK Push</span>
               </button>
 
               <button
@@ -513,7 +539,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
               <p className="text-xs text-zinc-400 mt-1">
                 {isActivation
                   ? 'Your Eneza Earnings account is now FULLY ACTIVATED!'
-                  : `KES ${amount.toLocaleString()} has been received via PayHero and credited to your Deposit Balance.`}
+                  : `KES ${amount.toLocaleString()} has been confirmed by Safaricom M-Pesa and credited to your Deposit Balance.`}
               </p>
             </div>
 
@@ -523,12 +549,16 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
                 <span className="text-emerald-400 font-bold">{generatedTx.mpesaReceiptNo}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-zinc-500">Amount Paid:</span>
-                <span className="text-zinc-200">KES {generatedTx.amount.toLocaleString()}</span>
+                <span className="text-zinc-500">Amount Deposited:</span>
+                <span className="text-zinc-200 font-bold">KES {generatedTx.amount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-zinc-500">Gateway Status:</span>
-                <span className="text-emerald-400 font-bold uppercase">PAYHERO VERIFIED (PAID)</span>
+                <span className="text-zinc-500">Credited To:</span>
+                <span className="text-emerald-400 font-semibold">Deposit Balance</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Verification Status:</span>
+                <span className="text-emerald-400 font-bold uppercase">SAFARICOM M-PESA CONFIRMED</span>
               </div>
             </div>
 
@@ -536,7 +566,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
               onClick={onClose}
               className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30 transition cursor-pointer"
             >
-              Continue to Dashboard
+              Continue with Deposit Balance
             </button>
           </div>
         )}

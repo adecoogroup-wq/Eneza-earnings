@@ -20,6 +20,7 @@ import {
   Clock,
   Flame,
   AlertTriangle,
+  AlertCircle,
   Lock,
   Tag,
   Plus,
@@ -223,6 +224,31 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
 
   return (
     <div className="space-y-6 pb-12 animate-fadeIn max-w-5xl mx-auto">
+      {/* NO ACTIVE PACKAGE NOTICE BANNER */}
+      {!currentUser.activeWhatsAppPackage && (
+        <div className="rounded-2xl bg-amber-500/10 border border-amber-500/40 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg animate-fadeIn">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">No Active WhatsApp Package</h3>
+              <p className="text-xs text-zinc-300">
+                All users must deposit first to activate a WhatsApp package before submitting daily status views and earning KES 100 per viewer.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onSwitchView('whatsappPackagesView')}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 shrink-0 shadow-lg shadow-amber-950/30 transition cursor-pointer"
+          >
+            <span>View Packages & Deposit</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 1. Header Summary */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-zinc-950 via-zinc-900 to-black border border-emerald-500/30 p-6 sm:p-8 shadow-2xl">
         {/* Glow decorations */}
@@ -639,40 +665,51 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
               </div>
 
               {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={
-                  isSubmitting ||
-                  viewCount <= 0 ||
-                  isSubmittedToday ||
-                  isWeeklyLimitReached
-                }
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 transition active:scale-[0.99] cursor-pointer"
-              >
-                {isSubmitting ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Verifying Proof OCR & Crediting Account...
-                  </span>
-                ) : isSubmittedToday ? (
-                  <span className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Already Submitted for Today (1x / Day)</span>
-                  </span>
-                ) : isWeeklyLimitReached ? (
-                  <span className="flex items-center gap-2">
-                    <Lock className="w-4 h-4" />
-                    <span>Weekly Limit Reached ({submissionsThisWeek}/{maxWeeklyPosts})</span>
-                  </span>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4" />
-                    <span>
-                      Submit {viewCount} Viewers & Claim KES {(calculatedEarnings || 0).toLocaleString()}
+              {!currentUser.activeWhatsAppPackage ? (
+                <button
+                  type="button"
+                  onClick={() => onSwitchView('whatsappPackagesView')}
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-zinc-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-950/40 transition active:scale-[0.99] cursor-pointer"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Deposit & Activate WhatsApp Package to Submit &rarr;</span>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={
+                    isSubmitting ||
+                    viewCount <= 0 ||
+                    isSubmittedToday ||
+                    isWeeklyLimitReached
+                  }
+                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 transition active:scale-[0.99] cursor-pointer"
+                >
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Verifying Proof OCR & Crediting Account...
                     </span>
-                  </>
-                )}
-              </button>
+                  ) : isSubmittedToday ? (
+                    <span className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Already Submitted for Today (1x / Day)</span>
+                    </span>
+                  ) : isWeeklyLimitReached ? (
+                    <span className="flex items-center gap-2">
+                      <Lock className="w-4 h-4" />
+                      <span>Weekly Limit Reached ({submissionsThisWeek}/{maxWeeklyPosts})</span>
+                    </span>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4" />
+                      <span>
+                        Submit {viewCount} Viewers & Claim KES {(calculatedEarnings || 0).toLocaleString()}
+                      </span>
+                    </>
+                  )}
+                </button>
+              )}
             </form>
           </div>
 

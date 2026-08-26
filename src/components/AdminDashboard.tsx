@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Transaction, EarningTask, TierLevel, PayHeroConfig, DailyProductItem } from '../types';
 import { INITIAL_PAYHERO_CONFIG, DAILY_PRODUCTS_CATALOG } from '../data/mockData';
 import { safeFormatDateTime } from '../utils/dateUtils';
+import { validateSafaricomPhone } from '../utils/phoneValidation';
 import { SponsoredProductFlyer } from './SponsoredProductFlyer';
 import {
   ShieldAlert,
@@ -9,6 +10,7 @@ import {
   Wallet,
   CheckCircle2,
   XCircle,
+  AlertCircle,
   Plus,
   ArrowUpRight,
   TrendingUp,
@@ -575,6 +577,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     alert('Please provide a client phone number.');
                     return;
                   }
+                  const val = validateSafaricomPhone(stkPhone);
+                  if (!val.isSafaricom) {
+                    setStkResult({
+                      status: 'failed',
+                      message: val.errorMessage || 'Invalid phone number. Only Safaricom numbers (07XX / 011X) can receive STK push.',
+                      receipt: 'FAILED',
+                    });
+                    return;
+                  }
+
                   setStkProcessing(true);
                   setStkResult(null);
 
@@ -583,7 +595,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
-                        phone: stkPhone,
+                        phone: val.localPhone,
                         amount: Number(stkAmount),
                         purpose: stkPurpose,
                         channelId: payConfig.channelId || '678',
@@ -595,33 +607,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     const data = await response.json().catch(() => null);
 
-                    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789';
-                    let receipt = data?.receiptCode || 'PH';
-                    if (receipt === 'PH') {
-                      for (let i = 0; i < 8; i++) {
-                        receipt += chars.charAt(Math.floor(Math.random() * chars.length));
-                      }
+                    if (!response.ok || (data && data.status === 'FAILED')) {
+                      setStkProcessing(false);
+                      setStkResult({
+                        status: 'failed',
+                        message: data?.error || data?.message || 'STK push failed on Safaricom network.',
+                        receipt: 'FAILED',
+                      });
+                      return;
                     }
 
                     setStkProcessing(false);
                     setStkResult({
                       status: 'success',
-                      message: data?.isLiveDispatch
-                        ? `Live PayHero STK Push delivered to ${stkPhone}. Payment prompt verified for KES ${stkAmount.toLocaleString()} (${stkPurpose}).`
-                        : `STK Push prompt generated for ${stkPhone}. Client entered PIN and verified payment of KES ${stkAmount.toLocaleString()} (${stkPurpose}).`,
-                      receipt: receipt,
+                      message: `Safaricom STK Push prompt successfully delivered to ${val.localPhone}. Awaiting user PIN entry on handset for KES ${Number(stkAmount).toLocaleString()} (${stkPurpose}).`,
+                      receipt: data?.payheroReference || data?.reference || 'PENDING_PIN',
                     });
-                  } catch {
-                    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789';
-                    let receipt = 'PH';
-                    for (let i = 0; i < 8; i++) {
-                      receipt += chars.charAt(Math.floor(Math.random() * chars.length));
-                    }
+                  } catch (err: any) {
                     setStkProcessing(false);
                     setStkResult({
-                      status: 'success',
-                      message: `STK Push delivered to ${stkPhone}. Client entered PIN and verified payment of KES ${stkAmount.toLocaleString()} (${stkPurpose}).`,
-                      receipt: receipt,
+                      status: 'failed',
+                      message: `Network error: ${err?.message || 'Could not connect to payment gateway.'}`,
+                      receipt: 'FAILED',
                     });
                   }
                 }}
@@ -649,10 +656,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
                 }`}
               >
-                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                {stkResult.status === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+                )}
                 <div className="space-y-1">
                   <p className="font-semibold">{stkResult.message}</p>
-                  {stkResult.receipt && (
+                  {stkResult.receipt && stkResult.receipt !== 'FAILED' && (
                     <p className="font-mono text-[11px] text-zinc-300">
                       Automated PayHero Receipt: <span className="text-white font-bold">{stkResult.receipt}</span> | Channel: <span className="text-emerald-400 font-bold">#{payConfig.channelId || '678'}</span> ({payConfig.username || 'Eneza'}) | Callback: <span className="text-emerald-400 font-bold">200 OK</span>
                     </p>
