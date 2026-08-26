@@ -86,7 +86,15 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
     if (!silent) setIsCheckingStatus(true);
 
     try {
-      const res = await fetch(`/api/mpesa/check-status?reference=${encodeURIComponent(reference)}`);
+      const params = new URLSearchParams({
+        reference,
+        channelId: payheroConfig?.channelId || '678',
+      });
+      if (payheroConfig?.apiKey) params.append('apiKey', payheroConfig.apiKey);
+      if (payheroConfig?.username) params.append('username', payheroConfig.username);
+      if (payheroConfig?.apiSecret) params.append('apiSecret', payheroConfig.apiSecret);
+
+      const res = await fetch(`/api/mpesa/check-status?${params.toString()}`);
       const data = await res.json().catch(() => null);
 
       if (data && data.success) {
@@ -114,7 +122,7 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
     }
 
     return false;
-  }, [amount, phone, completePayment]);
+  }, [amount, phone, completePayment, payheroConfig]);
 
   const executeStkPush = useCallback(async (targetPhone: string, targetAmount: number) => {
     const val = validateSafaricomPhone(targetPhone);
@@ -150,7 +158,13 @@ export const MpesaDepositModal: React.FC<MpesaDepositModalProps> = ({
 
       const data = await response.json().catch(() => null);
       if (!response.ok || (data && data.status === 'FAILED')) {
-        setDispatchError(data?.error || data?.message || 'Failed to dispatch STK push to Safaricom network.');
+        const errorMsg =
+          data?.error ||
+          data?.message ||
+          (response.status === 404
+            ? 'API endpoint not reached on Vercel. Ensure Vercel Serverless /api route is active.'
+            : `Failed to dispatch STK push to Safaricom network (HTTP ${response.status}).`);
+        setDispatchError(errorMsg);
         setIsDispatching(false);
         return;
       }

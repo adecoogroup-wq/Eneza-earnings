@@ -581,8 +581,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   if (!val.isSafaricom) {
                     setStkResult({
                       status: 'failed',
-                      message: val.errorMessage || 'Invalid phone number. Only Safaricom numbers (07XX / 011X) can receive STK push.',
-                      receipt: 'FAILED',
+                      message: val.errorMessage || 'Invalid phone number. Only valid Kenyan numbers (07XX / 011X) can receive STK push.',
                     });
                     return;
                   }
@@ -612,7 +611,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setStkResult({
                         status: 'failed',
                         message: data?.error || data?.message || 'STK push failed on Safaricom network.',
-                        receipt: 'FAILED',
                       });
                       return;
                     }
@@ -628,7 +626,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     setStkResult({
                       status: 'failed',
                       message: `Network error: ${err?.message || 'Could not connect to payment gateway.'}`,
-                      receipt: 'FAILED',
                     });
                   }
                 }}
