@@ -52,6 +52,13 @@ import { TaskExecutionModal } from './components/Modals/TaskExecutionModal';
 import { ReceiptModal } from './components/Modals/ReceiptModal';
 import { NotificationsDrawer } from './components/Modals/NotificationsDrawer';
 import confetti from 'canvas-confetti';
+import {
+  captureReferralCodeFromUrl,
+  fetchRemoteUsers,
+  registerRemoteUser,
+  syncAllUsersWithBackend,
+  mergeUserLists,
+} from './utils/userSync';
 
 export default function App() {
   // Persistence key helpers
@@ -232,6 +239,28 @@ export default function App() {
     setStored('dark_mode', isDarkMode);
   }, [isDarkMode]);
 
+  // Initial startup sync & periodic sync with central cloud backend
+  useEffect(() => {
+    captureReferralCodeFromUrl();
+
+    const doSync = async () => {
+      try {
+        const remote = await fetchRemoteUsers();
+        if (remote && remote.length > 0) {
+          setUsers((prev) => mergeUserLists(prev, remote));
+        }
+      } catch (err) {
+        console.warn('Startup user sync warning:', err);
+      }
+    };
+
+    doSync();
+
+    // Background poll every 12 seconds so admin dashboard receives new registrations from other clients
+    const interval = setInterval(doSync, 12000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Handle Login
   const handleLogin = (user: User) => {
     setCurrentUser(user);
@@ -243,9 +272,78 @@ export default function App() {
     }
   };
 
-  // Handle Register
-  const handleRegister = (newUser: User) => {
-    setUsers((prev) => [newUser, ...prev]);
+  // Handle Register (with real-time central backend persistence & referral link attribution)
+  const handleRegister = async (newUser: User) => {
+    setUsers((prev) => {
+      const filtered = prev.filter((u) => u.id !== newUser.id);
+      return [newUser, ...filtered];
+    });
+
+    // Check if user joined via a referral link (e.g. ENEZAPRO)
+    if (newUser.referredBy) {
+      const refCode = newUser.referredBy.trim().toUpperCase();
+      const referrer = users.find(
+        (u) =>
+          (u.referralCode || '').toUpperCase() === refCode ||
+          u.username.toUpperCase() === refCode
+      );
+
+      const newRef: Referral = {
+        id: `ref_${Date.now()}`,
+        referrerId: referrer ? referrer.id : `ref_code_${refCode}`,
+        referredUserId: newUser.id,
+        referredUserName: `${newUser.firstName} ${newUser.lastName}`,
+        status: 'active',
+        bonusEarned: 150, // 150 KES referral lead bonus
+        createdAt: new Date().toISOString(),
+      };
+
+      setReferrals((prev) => [newRef, ...prev]);
+
+      if (referrer) {
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === referrer.id
+              ? {
+                  ...u,
+                  pendingBalance: (u.pendingBalance || 0) + 150,
+                  totalEarned: (u.totalEarned || 0) + 150,
+                }
+              : u
+          )
+        );
+      }
+    }
+
+    // Persist to central cloud database immediately
+    try {
+      const res = await registerRemoteUser(newUser);
+      if (res.allUsers && res.allUsers.length > 0) {
+        setUsers((prev) => mergeUserLists(prev, res.allUsers || []));
+      }
+    } catch (err) {
+      console.warn('Central registration sync fallback:', err);
+    }
+  };
+
+  // Manual trigger for Admin Dashboard member sync
+  const handleSyncMembers = async (): Promise<number> => {
+    try {
+      const remote = await fetchRemoteUsers();
+      if (remote && remote.length > 0) {
+        const merged = mergeUserLists(users, remote);
+        setUsers(merged);
+        await syncAllUsersWithBackend(merged);
+        return merged.length;
+      }
+      // If no remote yet, push current local users to backend
+      const synced = await syncAllUsersWithBackend(users);
+      setUsers(synced);
+      return synced.length;
+    } catch (err) {
+      console.warn('Manual sync failed:', err);
+      return users.length;
+    }
   };
 
   // Handle Logout
@@ -1631,6 +1729,7 @@ export default function App() {
                 setPayheroConfig(newCfg);
                 alert('PayHero & Payment Gateway configuration updated and synced!');
               }}
+              onSyncMembers={handleSyncMembers}
             />
           )}
         </main>

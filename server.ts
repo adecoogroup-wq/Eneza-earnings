@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import { getAllStoredUsers, registerOrUpdateUser, batchSyncUsers } from './src/utils/userStore';
 
 // In-memory payment transaction tracker for PayHero STK Push
 interface TrackedTransaction {
@@ -108,6 +109,76 @@ export function configureApiRoutes(app: express.Application) {
   // API Route: Health check
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString(), platform: 'Eneza Platform' });
+  });
+
+  // API Route: Centralized User Registry (GET all users, POST/PUT update user)
+  app.get('/api/users', (req, res) => {
+    try {
+      const users = getAllStoredUsers();
+      res.json({
+        success: true,
+        count: users.length,
+        users,
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Error fetching users' });
+    }
+  });
+
+  // API Route: Register new user centrally across all devices
+  app.post('/api/users/register', (req, res) => {
+    try {
+      const body = req.body || {};
+      const phone = String(body.phone || '').trim();
+      const username = String(body.username || '').trim();
+
+      if (!phone && !username) {
+        return res.status(400).json({ success: false, error: 'Phone or username is required' });
+      }
+
+      const userId = body.id || `usr_${Date.now()}`;
+      const userToSave = {
+        ...body,
+        id: userId,
+        createdAt: body.createdAt || new Date().toISOString(),
+      };
+
+      const saved = registerOrUpdateUser(userToSave);
+      const allUsers = getAllStoredUsers();
+
+      console.log(`[Eneza Cloud Registry] Registered user: ${saved.username} (${saved.phone}) | Ref: ${saved.referredBy || 'Direct'} | Total members: ${allUsers.length}`);
+
+      res.json({
+        success: true,
+        message: 'User registered in central database',
+        user: saved,
+        totalUsers: allUsers.length,
+        users: allUsers,
+      });
+    } catch (err: any) {
+      console.error('[Eneza Registration Error]:', err);
+      res.status(500).json({ success: false, error: err?.message || 'Error registering user' });
+    }
+  });
+
+  // API Route: Batch sync users between client devices and server
+  app.post('/api/users/sync', (req, res) => {
+    try {
+      const body = req.body || {};
+      const clientUsers = Array.isArray(body.users) ? body.users : [];
+      if (clientUsers.length > 0) {
+        batchSyncUsers(clientUsers);
+      }
+      const allUsers = getAllStoredUsers();
+      res.json({
+        success: true,
+        totalUsers: allUsers.length,
+        users: allUsers,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Sync error' });
+    }
   });
 
   // API Route: Get Public M-Pesa Gateway Config

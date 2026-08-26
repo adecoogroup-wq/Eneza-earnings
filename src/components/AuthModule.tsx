@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { INITIAL_USERS } from '../data/mockData';
-import { ShieldCheck, UserCheck, Smartphone, KeyRound, Sparkles, ArrowRight } from 'lucide-react';
+import { ShieldCheck, UserCheck, Smartphone, KeyRound, Sparkles, ArrowRight, Gift, CheckCircle2 } from 'lucide-react';
+import { captureReferralCodeFromUrl, getCapturedReferralCode, clearCapturedReferralCode } from '../utils/userSync';
 
 interface AuthModuleProps {
   onLogin: (user: User) => void;
@@ -10,7 +11,11 @@ interface AuthModuleProps {
 }
 
 export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers, onRegister }) => {
-  const [authView, setAuthView] = useState<'signin' | 'signup'>('signin');
+  const [authView, setAuthView] = useState<'signin' | 'signup'>(() => {
+    // If user arrived via referral link (?ref=...), open signup form by default
+    const refCode = captureReferralCodeFromUrl();
+    return refCode ? 'signup' : 'signin';
+  });
 
   // Sign in state
   const [signInIdentifier, setSignInIdentifier] = useState('');
@@ -23,7 +28,19 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
   const [phone, setPhone] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [referralInput, setReferralInput] = useState<string>(() => {
+    return getCapturedReferralCode() || '';
+  });
   const [signUpError, setSignUpError] = useState('');
+
+  // Check URL on mount for referral code
+  useEffect(() => {
+    const code = captureReferralCodeFromUrl();
+    if (code) {
+      setReferralInput(code);
+      setAuthView('signup');
+    }
+  }, []);
 
   const handleSignInSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,8 +56,9 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
       cleanInput === 'admin' ||
       cleanInput === 'administrator' ||
       cleanInput === 'superadmin' ||
-      cleanInput === 'admin@earnwave.com' ||
       cleanInput === 'admin@enezaearnings.ke' ||
+      cleanInput === 'admin@eneza.ke' ||
+      cleanInput === 'admin@enezaearnings.com' ||
       cleanPhoneDigits === '0799000111' ||
       cleanPhoneDigits.endsWith('799000111');
 
@@ -125,6 +143,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
     const first = nameParts[0] || 'Member';
     const last = nameParts.slice(1).join(' ') || '';
     const generatedUsername = first.toLowerCase().replace(/[^a-z0-9]/g, '') + Math.floor(100 + Math.random() * 900);
+    const effectiveReferral = (referralInput || getCapturedReferralCode() || '').trim().toUpperCase();
 
     const newUser: User = {
       id: `usr_${Date.now()}`,
@@ -143,7 +162,8 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
       totalWithdrawn: 0,
       totalEarned: 0,
       referralCode: `EE${Math.floor(1000 + Math.random() * 9000)}`,
-      spinsRemaining: 0,
+      referredBy: effectiveReferral || undefined,
+      spinsRemaining: 1, // Welcome 1 spin bonus
       tasksCompletedToday: 0,
       maxTasksPerDay: 5,
       whatsappBalance: 0,
@@ -156,6 +176,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
       createdAt: new Date().toISOString(),
     };
 
+    clearCapturedReferralCode();
     onRegister(newUser);
     onLogin(newUser);
   };
@@ -356,6 +377,38 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
                     placeholder=""
                     className="block w-full rounded-2xl bg-[#08111e] border border-[#1b2f4c] px-4 py-3 text-white placeholder-slate-500 text-sm focus:border-[#FF386B] focus:outline-none transition shadow-inner"
                   />
+                </div>
+
+                {/* Referral Code (Auto-filled from ?ref=ENEZAPRO or manual) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label htmlFor="signup_referral" className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Gift className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Referral Code</span>
+                    </label>
+                    {referralInput ? (
+                      <span className="text-[11px] text-emerald-400 font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Inviter Attached
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-500 font-normal">(optional)</span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    id="signup_referral"
+                    value={referralInput}
+                    onChange={(e) => setReferralInput(e.target.value.toUpperCase())}
+                    placeholder="e.g. ENEZAPRO"
+                    className="block w-full rounded-2xl bg-[#08111e] border border-[#1b2f4c] px-4 py-3 text-amber-300 placeholder-slate-500 text-sm font-mono tracking-wider focus:border-amber-500 focus:outline-none transition shadow-inner"
+                  />
+                  {referralInput && (
+                    <p className="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1 pl-1">
+                      <span>✓ You are joining under inviter:</span>
+                      <strong className="text-amber-300 font-mono">{referralInput}</strong>
+                    </p>
+                  )}
                 </div>
 
                 <div className="pt-2">

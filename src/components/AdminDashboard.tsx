@@ -50,6 +50,7 @@ interface AdminDashboardProps {
   onSendBroadcastNotification: (title: string, message: string) => void;
   payheroConfig?: PayHeroConfig;
   onUpdatePayheroConfig?: (config: PayHeroConfig) => void;
+  onSyncMembers?: () => Promise<number>;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -64,8 +65,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSendBroadcastNotification,
   payheroConfig = INITIAL_PAYHERO_CONFIG,
   onUpdatePayheroConfig,
+  onSyncMembers,
 }) => {
   const [adminTab, setAdminTab] = useState<'overview' | 'withdrawals' | 'payhero' | 'users' | 'activity' | 'tasks' | 'products' | 'broadcast'>('overview');
+  const [isSyncingMembers, setIsSyncingMembers] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  const handleTriggerSync = async () => {
+    if (!onSyncMembers) return;
+    setIsSyncingMembers(true);
+    try {
+      const count = await onSyncMembers();
+      setSyncNotice(`Synced ${count} live members from central database.`);
+      setTimeout(() => setSyncNotice(null), 4000);
+    } catch (err) {
+      setSyncNotice('Sync failed or offline.');
+      setTimeout(() => setSyncNotice(null), 3000);
+    } finally {
+      setIsSyncingMembers(false);
+    }
+  };
 
   // Sponsored Products Catalog State
   const [productsCatalog, setProductsCatalog] = useState<DailyProductItem[]>(DAILY_PRODUCTS_CATALOG);
@@ -882,50 +901,128 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Users className="w-4 h-4 text-amber-400" />
                 Persistent Members Registry ({users.length})
               </h3>
-              <p className="text-xs text-zinc-400">All registered users saved in database for recurring logins.</p>
+              <p className="text-xs text-zinc-400">All registered users saved in central cloud database for recurring logins & referral tracking.</p>
             </div>
 
-            <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={userSearch || ''}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="Search username, name, phone..."
-                className="w-full rounded-xl bg-zinc-950 border border-zinc-800 pl-8 pr-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-              />
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={userSearch || ''}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  placeholder="Search name, phone, ENEZAPRO..."
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 pl-8 pr-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {onSyncMembers && (
+                <button
+                  onClick={handleTriggerSync}
+                  disabled={isSyncingMembers}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-md cursor-pointer disabled:opacity-50"
+                  title="Fetch all live registered users across all devices"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMembers ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingMembers ? 'Syncing...' : 'Sync Live'}</span>
+                </button>
+              )}
             </div>
           </div>
+
+          {syncNotice && (
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>{syncNotice}</span>
+            </div>
+          )}
+
+          {/* Quick Filter Tag for ENEZAPRO or Other Referrers */}
+          {users.some((u) => u.referredBy) && (
+            <div className="flex items-center gap-2 pt-1 overflow-x-auto text-[11px]">
+              <span className="text-zinc-500 font-semibold">Filter by Inviter:</span>
+              <button
+                onClick={() => setUserSearch('')}
+                className={`px-2 py-0.5 rounded-full border text-[10px] transition cursor-pointer ${
+                  !userSearch ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                }`}
+              >
+                All ({users.length})
+              </button>
+              {Array.from(new Set(users.map((u) => u.referredBy).filter(Boolean))).map((refCode) => {
+                const count = users.filter((u) => u.referredBy === refCode).length;
+                const isSelected = userSearch.toUpperCase() === String(refCode).toUpperCase();
+                return (
+                  <button
+                    key={String(refCode)}
+                    onClick={() => setUserSearch(String(refCode))}
+                    className={`px-2 py-0.5 rounded-full border text-[10px] transition cursor-pointer font-mono flex items-center gap-1 ${
+                      isSelected
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <span>{refCode}</span>
+                    <span className="text-[9px] px-1 rounded-full bg-zinc-800 text-zinc-300">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-zinc-800 text-zinc-400 font-mono">
-                  <th className="pb-3 font-semibold">User</th>
+                  <th className="pb-3 font-semibold">Member</th>
                   <th className="pb-3 font-semibold">Phone</th>
+                  <th className="pb-3 font-semibold">Inviter / Ref</th>
                   <th className="pb-3 font-semibold">Tier</th>
                   <th className="pb-3 font-semibold">Spendable</th>
                   <th className="pb-3 font-semibold">WhatsApp Pool</th>
+                  <th className="pb-3 font-semibold">Joined</th>
                   <th className="pb-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
                 {users
-                  .filter(
-                    (u) =>
-                      (u.username || '').toLowerCase().includes(userSearch.toLowerCase()) ||
-                      (`${u.firstName || ''} ${u.lastName || ''}`).toLowerCase().includes(userSearch.toLowerCase()) ||
-                      (u.phone || '').includes(userSearch)
-                  )
+                  .filter((u) => {
+                    const search = userSearch.toLowerCase().trim();
+                    if (!search) return true;
+                    return (
+                      (u.username || '').toLowerCase().includes(search) ||
+                      (`${u.firstName || ''} ${u.lastName || ''}`).toLowerCase().includes(search) ||
+                      (u.phone || '').includes(search) ||
+                      (u.referredBy || '').toLowerCase().includes(search) ||
+                      (u.referralCode || '').toLowerCase().includes(search)
+                    );
+                  })
                   .map((u) => (
                     <tr key={u.id} className="hover:bg-zinc-800/20">
                       <td className="py-3 font-semibold text-white">
-                        {u.firstName} {u.lastName}
-                        <span className="block text-[10px] text-zinc-500 font-mono font-normal">
-                          @{u.username}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-300 font-bold">
+                            {(u.firstName || 'U')[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <span>{u.firstName} {u.lastName}</span>
+                            <span className="block text-[10px] text-zinc-500 font-mono font-normal">
+                              @{u.username} • Code: <strong className="text-zinc-400">{u.referralCode}</strong>
+                            </span>
+                          </div>
+                        </div>
                       </td>
                       <td className="py-3 font-mono text-zinc-300">{u.phone}</td>
+                      <td className="py-3">
+                        {u.referredBy ? (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold inline-flex items-center gap-1">
+                            <span>Ref:</span>
+                            <span>{u.referredBy}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-zinc-500 font-mono">Direct</span>
+                        )}
+                      </td>
                       <td className="py-3">
                         <select
                           value={u.tier || 'Standard'}
@@ -946,6 +1043,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <td className="py-3 font-mono text-blue-400">
                         KES {(u.whatsappBalance || 0).toLocaleString()}
                       </td>
+                      <td className="py-3 font-mono text-[10px] text-zinc-500">
+                        {u.createdAt ? safeFormatDateTime(u.createdAt).split(',')[0] : 'Recent'}
+                      </td>
                       <td className="py-3">
                         <div className="flex items-center gap-1.5">
                           <button
@@ -953,7 +1053,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             className="px-2.5 py-1 rounded bg-indigo-900/40 hover:bg-indigo-800/60 border border-indigo-500/30 text-indigo-200 text-[11px] font-semibold transition cursor-pointer flex items-center gap-1"
                           >
                             <Eye className="w-3 h-3" />
-                            <span>View Data</span>
+                            <span>View</span>
                           </button>
                           <button
                             onClick={() => {
@@ -961,7 +1061,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             }}
                             className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-semibold transition cursor-pointer"
                           >
-                            Adjust Balance
+                            Adjust
                           </button>
                         </div>
                       </td>
@@ -1006,6 +1106,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <span className="font-mono text-zinc-200 font-semibold">{inspectingUser.phone}</span>
                   </div>
                   <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
+                    <span className="text-zinc-500 block text-[10px] uppercase font-bold">Invited By (Referrer)</span>
+                    <span className="font-mono text-amber-400 font-bold">
+                      {inspectingUser.referredBy ? `Ref: ${inspectingUser.referredBy}` : 'Direct / Organic'}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
+                    <span className="text-zinc-500 block text-[10px] uppercase font-bold">Personal Ref Code</span>
+                    <span className="font-mono text-indigo-300 font-bold">{inspectingUser.referralCode}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
                     <span className="text-zinc-500 block text-[10px] uppercase font-bold">Role</span>
                     <span className="font-semibold text-emerald-400 uppercase">{inspectingUser.role}</span>
                   </div>
@@ -1038,8 +1148,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </span>
                   </div>
                   <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80 col-span-2">
-                    <span className="text-zinc-500 block text-[10px] uppercase font-bold">Referral Code</span>
-                    <span className="font-mono text-indigo-300 font-bold">{inspectingUser.referralCode}</span>
+                    <span className="text-zinc-500 block text-[10px] uppercase font-bold">Date Registered</span>
+                    <span className="font-mono text-zinc-300 font-semibold">
+                      {inspectingUser.createdAt ? safeFormatDateTime(inspectingUser.createdAt) : 'Initial User'}
+                    </span>
                   </div>
                 </div>
 
