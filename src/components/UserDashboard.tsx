@@ -140,6 +140,14 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const displayName = user?.firstName || user?.username || 'Chris';
   const eeAccountNumber = getFormattedAccountNumber(user);
 
+  // Derive spendable WhatsApp earnings balance (falls back cleanly to user.balance if whatsappBalance is 0)
+  const effectiveWhatsAppBalance =
+    typeof user.whatsappBalance === 'number' && user.whatsappBalance > 0
+      ? user.whatsappBalance
+      : typeof user.balance === 'number'
+      ? user.balance
+      : 0;
+
   const handleCopyAccount = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard?.writeText(eeAccountNumber);
@@ -412,7 +420,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               WHATSAPP BALANCE
             </div>
             <div className="text-2xl sm:text-3xl font-black text-white mt-0.5 font-mono">
-              KES {Math.floor(user.whatsappBalance || 0)}
+              KES {Math.floor(effectiveWhatsAppBalance)}
             </div>
           </div>
 
@@ -445,7 +453,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             WHATSAPP EARNING
           </div>
           <div className="text-3xl sm:text-4xl font-black font-mono tracking-tight mt-1">
-            {formatCurrency(user.whatsappBalance || 0)}
+            {formatCurrency(effectiveWhatsAppBalance)}
           </div>
           <div className="text-xs text-white/90 mt-2 font-medium">
             Views × rate · auto payouts

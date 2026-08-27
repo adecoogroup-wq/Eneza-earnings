@@ -99,6 +99,35 @@ export async function registerRemoteUser(newUser: User): Promise<{ success: bool
 }
 
 /**
+ * Update user in the central database
+ */
+export async function updateRemoteUser(user: Partial<User> & { id: string }): Promise<{ success: boolean; allUsers?: User[]; user?: User }> {
+  try {
+    const res = await fetch('/api/users/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(user),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      console.log(`[Eneza User Sync] Successfully updated ${user.id} in central registry!`);
+      return {
+        success: true,
+        allUsers: data.users || [],
+        user: data.user,
+      };
+    }
+  } catch (err) {
+    console.warn('[Eneza User Sync] Network error during remote user update:', err);
+  }
+
+  return { success: false };
+}
+
+/**
  * Batch synchronize client and server users
  */
 export async function syncAllUsersWithBackend(clientUsers: User[]): Promise<User[]> {

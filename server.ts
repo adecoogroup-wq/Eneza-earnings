@@ -161,6 +161,33 @@ export function configureApiRoutes(app: express.Application) {
     }
   });
 
+  // API Route: Update user centrally across all devices
+  app.post('/api/users/update', (req, res) => {
+    try {
+      const body = req.body || {};
+      const userId = body.id;
+      if (!userId) {
+        return res.status(400).json({ success: false, error: 'User ID is required' });
+      }
+
+      const saved = registerOrUpdateUser(body);
+      const allUsers = getAllStoredUsers();
+
+      console.log(`[Eneza Cloud Registry] Updated user: ${saved.username} (${saved.id}) | Balance: KES ${saved.balance} | WhatsApp: KES ${saved.whatsappBalance}`);
+
+      res.json({
+        success: true,
+        message: 'User updated in central database',
+        user: saved,
+        totalUsers: allUsers.length,
+        users: allUsers,
+      });
+    } catch (err: any) {
+      console.error('[Eneza User Update Error]:', err);
+      res.status(500).json({ success: false, error: err?.message || 'Error updating user' });
+    }
+  });
+
   // API Route: Batch sync users between client devices and server
   app.post('/api/users/sync', (req, res) => {
     try {
