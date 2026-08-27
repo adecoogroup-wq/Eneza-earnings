@@ -28,7 +28,7 @@ import {
   Sliders,
 } from 'lucide-react';
 import { AppView } from './Sidebar';
-import { SponsoredProductFlyer } from './SponsoredProductFlyer';
+import { SponsoredProductFlyer, SponsoredProductFlyerRef } from './SponsoredProductFlyer';
 
 interface UploadedPhoto {
   file: File;
@@ -52,8 +52,15 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
   onSwitchView,
 }) => {
   const todayDayIndex = new Date().getDay();
+  // Default to Thursday's Royal Velvet Sofa (index 4) if today or index
+  const [selectedProductIndex, setSelectedProductIndex] = useState<number>(
+    todayDayIndex === 4 ? 4 : todayDayIndex < DAILY_PRODUCTS_CATALOG.length ? todayDayIndex : 4
+  );
+
   const activeProduct: DailyProductItem =
-    DAILY_PRODUCTS_CATALOG[todayDayIndex] || DAILY_PRODUCTS_CATALOG[0];
+    DAILY_PRODUCTS_CATALOG[selectedProductIndex] || DAILY_PRODUCTS_CATALOG[4] || DAILY_PRODUCTS_CATALOG[0];
+
+  const flyerRef = useRef<SponsoredProductFlyerRef>(null);
 
   // Viewer Count state - allows typing any manual count or picking presets
   const [viewCountStr, setViewCountStr] = useState<string>('45');
@@ -135,13 +142,17 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
   };
 
   const handleDownloadImage = () => {
-    const link = document.createElement('a');
-    link.href = activeProduct.imageBanner;
-    link.download = activeProduct.downloadFileName;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (flyerRef.current) {
+      flyerRef.current.exportFlyer();
+    } else {
+      const link = document.createElement('a');
+      link.href = activeProduct.imageBanner;
+      link.download = activeProduct.downloadFileName || 'eneza_royal_velvet_sofa_sale.jpg';
+      link.target = '_blank';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   };
 
   // Process selected image files safely with FileReader
@@ -330,6 +341,25 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
         </div>
       </div>
 
+      {/* Product Day Selector Tab Bar */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+        {DAILY_PRODUCTS_CATALOG.map((item, idx) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setSelectedProductIndex(idx)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+              selectedProductIndex === idx
+                ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/25'
+                : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            <span>{item.dayBadge?.split(' ')[0] || `Product ${idx + 1}`}</span>
+            {selectedProductIndex === idx && <Sparkles className="w-3 h-3" />}
+          </button>
+        ))}
+      </div>
+
       {/* Grid: Left Promotional Poster Flyer / Right Screenshot Submission */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: SPONSORED POSTER */}
@@ -351,7 +381,11 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
 
             {/* HIGH-IMPACT SPONSORED POSTER FLYER */}
             <div className="mt-4 flex justify-center">
-              <SponsoredProductFlyer product={activeProduct} onDownload={handleDownloadImage} />
+              <SponsoredProductFlyer
+                ref={flyerRef}
+                product={activeProduct}
+                onDownload={handleDownloadImage}
+              />
             </div>
           </div>
 

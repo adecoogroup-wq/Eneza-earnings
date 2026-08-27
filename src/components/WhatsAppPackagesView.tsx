@@ -34,7 +34,7 @@ export const WhatsAppPackagesView: React.FC<WhatsAppPackagesViewProps> = ({
 }) => {
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const userDepositBalance = currentUser.depositBalance || 0;
+  const userDepositBalance = Math.max(currentUser.depositBalance ?? 0, currentUser.balance ?? 0);
 
   const handleAction = (pkg: WhatsAppPackageItem) => {
     // If deposit balance is less than package price, prompt deposit first

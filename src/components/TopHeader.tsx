@@ -1,9 +1,11 @@
 import React from 'react';
 import { User } from '../types';
 import { Menu, Moon, Sun, Bell, ArrowUpRight, Plus, Wallet } from 'lucide-react';
+import { AppView } from './Sidebar';
 
 interface TopHeaderProps {
   currentUser: User;
+  currentView?: AppView;
   onOpenMobileSidebar: () => void;
   onOpenDeposit: () => void;
   onOpenWithdraw: () => void;
@@ -18,16 +20,47 @@ interface TopHeaderProps {
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
   currentUser,
+  currentView = 'userDashboardView',
   onOpenMobileSidebar,
   onOpenDeposit,
   onOpenWithdraw,
   onSwitchView,
-  isDarkMode = true,
+  isDarkMode = false,
   onToggleDarkMode,
 }) => {
   const userInitial = currentUser?.firstName
     ? currentUser.firstName.charAt(0).toUpperCase()
     : 'C';
+
+  // Determine dynamic title and subtitle matching user screenshots
+  let headerTitle = 'EarnWave Solutions';
+  let headerSubtitle = 'Welcome back · your WhatsApp wallets';
+
+  if (currentView === 'whatsappPackagesView') {
+    headerTitle = 'Activation';
+    headerSubtitle = 'WhatsApp packages · 2× cashback';
+  } else if (currentView === 'cashierView') {
+    headerTitle = 'Recharge';
+    headerSubtitle = 'Fund deposit via M-Pesa Swift Wallet';
+  } else if (currentView === 'whatsappEarningsView') {
+    headerTitle = 'WhatsApp Earn';
+    headerSubtitle = 'Submit views · auto payout';
+  } else if (currentView === 'cashbackBonusView') {
+    headerTitle = 'Cashback Bonus';
+    headerSubtitle = '200% instant cashback rewards';
+  } else if (currentView === 'referralsView') {
+    headerTitle = 'Referrals';
+    headerSubtitle = 'Invite friends · earn commission';
+  } else if (currentView === 'investmentPlansView') {
+    headerTitle = 'Investments';
+    headerSubtitle = 'High yield daily growth plans';
+  } else if (currentView === 'spinWheelView') {
+    headerTitle = 'Lucky Wheel';
+    headerSubtitle = 'Spin to win cash prizes';
+  } else if (currentView === 'adminDashboardView') {
+    headerTitle = 'Admin Console';
+    headerSubtitle = 'Live platform management hub';
+  }
 
   return (
     <header
@@ -35,7 +68,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         isDarkMode
           ? 'bg-[#070e1b]/95 border-[#182a44] text-slate-100'
           : 'bg-white/85 border-slate-200/80 text-slate-900'
-      } border-b backdrop-blur-md px-4 sm:px-6 py-3.5 transition-colors duration-200`}
+      } border-b backdrop-blur-md px-4 sm:px-6 py-3 transition-colors duration-200`}
     >
       <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto">
         {/* Left Side: Hamburger Menu & Brand Header */}
@@ -54,47 +87,24 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
           <div>
             <h1
-              className={`text-base sm:text-lg font-black tracking-tight leading-tight flex items-center gap-1.5 ${
+              className={`text-base sm:text-lg font-black tracking-tight leading-tight ${
                 isDarkMode ? 'text-white' : 'text-slate-900'
               }`}
             >
-              <span>Eneza</span>
-              <span className="text-[#FF386B]">Earnings</span>
+              {headerTitle}
             </h1>
             <p
               className={`text-xs ${
                 isDarkMode ? 'text-slate-400' : 'text-slate-500'
               } font-normal leading-tight hidden xs:block`}
             >
-              Welcome back · your WhatsApp wallets
+              {headerSubtitle}
             </p>
           </div>
         </div>
 
         {/* Right Side: Night/Light Mode Toggle & Coral Profile Avatar */}
         <div className="flex items-center gap-2.5">
-          {/* Quick Action Buttons on desktop */}
-          <div className="hidden sm:flex items-center gap-2 mr-1">
-            <button
-              onClick={onOpenDeposit}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Deposit</span>
-            </button>
-            <button
-              onClick={onOpenWithdraw}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl ${
-                isDarkMode
-                  ? 'bg-[#0b1626] hover:bg-[#12223b] text-slate-200 border-[#1b2f4c]'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
-              } border text-xs font-semibold transition cursor-pointer`}
-            >
-              <ArrowUpRight className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Withdraw</span>
-            </button>
-          </div>
-
           {/* Theme Mode Toggle (Moon in Light mode, Sun in Dark mode) */}
           <button
             onClick={onToggleDarkMode}
@@ -116,7 +126,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           {/* Profile Circle Avatar with Coral/Red Background (Matching Screenshots) */}
           <button
             onClick={() => onSwitchView('referralsView')}
-            className="w-10 h-10 rounded-full bg-[#FF486B] text-white font-black text-sm flex items-center justify-center shadow-md shadow-rose-950/20 hover:opacity-90 transition cursor-pointer"
+            className="w-10 h-10 rounded-full bg-[#FF3B30] text-white font-black text-sm flex items-center justify-center shadow-md shadow-rose-950/20 hover:opacity-90 transition cursor-pointer"
             title={`${currentUser?.firstName || 'Member'} (${currentUser?.username || ''})`}
           >
             {userInitial}

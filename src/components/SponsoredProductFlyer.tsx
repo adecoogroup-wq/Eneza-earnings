@@ -1,6 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useRef, useImperativeHandle, forwardRef } from 'react';
 import { DailyProductItem } from '../types';
-import { CheckCircle2, Sparkles, Download } from 'lucide-react';
+import { Download } from 'lucide-react';
+
+export interface SponsoredProductFlyerRef {
+  exportFlyer: () => void;
+}
 
 interface SponsoredProductFlyerProps {
   product: DailyProductItem;
@@ -8,134 +12,147 @@ interface SponsoredProductFlyerProps {
   showDownloadButton?: boolean;
 }
 
-export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
-  product,
-  onDownload,
-  showDownloadButton = false,
-}) => {
+export const SponsoredProductFlyer = forwardRef<
+  SponsoredProductFlyerRef,
+  SponsoredProductFlyerProps
+>(({ product, onDownload, showDownloadButton = false }, ref) => {
   const flyerContainerRef = useRef<HTMLDivElement>(null);
 
   // Fallback values matching the exact uploaded reference style
-  const headlineMain = product.headlineMain || 'SUPER RESORT';
+  const headlineMain = product.headlineMain || 'ROYAL VELVET SOFA';
   const headlineSub = product.headlineSub || 'FOR SALE';
-  const ribbonText = product.ribbonText || 'AQUIRE THIS ELEGANT RESORT';
-  const sealTop = product.sealTopText || 'NEWLY';
-  const sealBottom = product.sealBottomText || 'BIULT';
-  const features = product.featuresList && product.featuresList.length === 6
-    ? product.featuresList
-    : [
-        'Recreational Centre',
-        'Accomondation',
-        'GYM Scheme',
-        'Enough Packing',
-        'Maximum Security',
-        'Favourable Services',
-      ];
+  const ribbonText = product.ribbonText || 'AQUIRE THIS LUXURY SUITE';
+  const sealTop = product.sealTopText || 'BESPOKE';
+  const sealBottom = product.sealBottomText || 'DESIGN';
+  const features =
+    product.featuresList && product.featuresList.length === 6
+      ? product.featuresList
+      : [
+          '7-Seater Modular Set',
+          'Water-Repellent Velvet',
+          'Solid Hardwood Frame',
+          'Gold Metal Accents',
+          'Orthopedic Comfort',
+          'Free White-Glove Setup',
+        ];
   const managedBy = product.footerManagedBy || 'PROPERTY MANAGED BY ENEZA EARNINGS';
 
   // High-Res Canvas Exporter (1080x1080px crisp flyer)
   const handleExportFlyer = () => {
-    if (onDownload) {
-      onDownload();
-      return;
-    }
-
     const canvas = document.createElement('canvas');
     canvas.width = 1080;
     canvas.height = 1080;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = product.imageBanner;
-
-    const renderCanvasContent = () => {
-      // Draw background image
-      try {
-        ctx.drawImage(img, 0, 0, 1080, 1080);
-      } catch {
-        ctx.fillStyle = '#111827';
-        ctx.fillRect(0, 0, 1080, 1080);
+    const renderPoster = (imgLoaded: HTMLImageElement | null) => {
+      // 1. Background (Image or dark studio atmosphere)
+      if (imgLoaded) {
+        try {
+          ctx.drawImage(imgLoaded, 0, 0, 1080, 1080);
+        } catch {
+          drawFallbackStudioBg();
+        }
+      } else {
+        drawFallbackStudioBg();
       }
 
-      // Top dark smoke gradient
-      const topGrad = ctx.createLinearGradient(0, 0, 0, 480);
-      topGrad.addColorStop(0, 'rgba(0, 0, 0, 0.95)');
-      topGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.7)');
-      topGrad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
-      ctx.fillStyle = topGrad;
-      ctx.fillRect(0, 0, 1080, 480);
+      function drawFallbackStudioBg() {
+        const bgGrad = ctx!.createRadialGradient(540, 540, 100, 540, 540, 650);
+        bgGrad.addColorStop(0, '#273838');
+        bgGrad.addColorStop(0.5, '#162222');
+        bgGrad.addColorStop(1, '#090d0e');
+        ctx!.fillStyle = bgGrad;
+        ctx!.fillRect(0, 0, 1080, 1080);
 
-      // Bottom dark smoke gradient
+        // Sofa illustration placeholder if image blocked
+        ctx!.fillStyle = '#0f3d38';
+        ctx!.beginPath();
+        ctx!.roundRect(140, 420, 800, 360, 40);
+        ctx!.fill();
+      }
+
+      // 2. Dark atmospheric vignettes (Top & Bottom smoke)
+      const topGrad = ctx.createLinearGradient(0, 0, 0, 420);
+      topGrad.addColorStop(0, 'rgba(5, 5, 5, 0.95)');
+      topGrad.addColorStop(0.5, 'rgba(5, 5, 5, 0.7)');
+      topGrad.addColorStop(1, 'rgba(5, 5, 5, 0.0)');
+      ctx.fillStyle = topGrad;
+      ctx.fillRect(0, 0, 1080, 420);
+
       const btmGrad = ctx.createLinearGradient(0, 600, 0, 1080);
-      btmGrad.addColorStop(0, 'rgba(0, 0, 0, 0.0)');
-      btmGrad.addColorStop(0.4, 'rgba(0, 0, 0, 0.75)');
-      btmGrad.addColorStop(1, 'rgba(0, 0, 0, 0.98)');
+      btmGrad.addColorStop(0, 'rgba(5, 5, 5, 0.0)');
+      btmGrad.addColorStop(0.35, 'rgba(5, 5, 5, 0.75)');
+      btmGrad.addColorStop(1, 'rgba(5, 5, 5, 0.98)');
       ctx.fillStyle = btmGrad;
       ctx.fillRect(0, 600, 1080, 480);
 
-      // Top Right Gold Fold
+      // 3. Top-Right Golden Geometric Fold
       ctx.save();
       ctx.beginPath();
-      ctx.moveTo(900, 0);
+      ctx.moveTo(880, 0);
       ctx.lineTo(1080, 0);
-      ctx.lineTo(1080, 180);
+      ctx.lineTo(1080, 200);
       ctx.closePath();
-      const goldFold = ctx.createLinearGradient(900, 0, 1080, 180);
+      const goldFold = ctx.createLinearGradient(880, 0, 1080, 200);
       goldFold.addColorStop(0, '#fef08a');
-      goldFold.addColorStop(0.5, '#eab308');
+      goldFold.addColorStop(0.4, '#eab308');
       goldFold.addColorStop(1, '#ca8a04');
       ctx.fillStyle = goldFold;
       ctx.fill();
       ctx.restore();
 
-      // Brand Header: ENEZA / EARNINGS
+      // 4. Header: ENEZA / ◀ EARNINGS ▶
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffffff';
-      ctx.font = '900 68px "Impact", "Arial Black", sans-serif';
-      ctx.fillText('ENEZA', 540, 110);
-
-      // < EARNINGS >
-      ctx.fillStyle = '#facc15';
-      ctx.font = '800 30px sans-serif';
-      ctx.fillText('◀  EARNINGS  ▶', 540, 160);
-
-      // Main Headline (Yellow text with dark shadow)
-      ctx.textAlign = 'left';
-      ctx.shadowColor = 'rgba(0,0,0,0.9)';
-      ctx.shadowBlur = 12;
-      ctx.shadowOffsetX = 4;
-      ctx.shadowOffsetY = 4;
+      ctx.font = '900 74px "Impact", "Arial Black", sans-serif';
+      ctx.fillText('ENEZA', 540, 108);
 
       ctx.fillStyle = '#f59e0b';
-      ctx.font = '900 66px "Impact", "Arial Black", sans-serif';
+      ctx.font = '800 28px sans-serif';
+      ctx.fillText('◀  EARNINGS  ▶', 540, 155);
+
+      // 5. Main Headline: Left Side
+      ctx.textAlign = 'left';
+      ctx.shadowColor = 'rgba(0,0,0,0.95)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 3;
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = '900 64px "Impact", "Arial Black", sans-serif';
       ctx.fillText(headlineMain, 50, 430);
-      ctx.fillText(headlineSub, 50, 500);
+      ctx.fillText(headlineSub, 50, 498);
       ctx.shadowColor = 'transparent';
 
-      // Ribbon text
+      // 6. Amber Ribbon Tag
       ctx.fillStyle = '#f59e0b';
-      ctx.fillRect(50, 525, 460, 48);
+      ctx.fillRect(50, 525, 460, 46);
       ctx.fillStyle = '#000000';
-      ctx.font = '900 24px sans-serif';
-      ctx.fillText(ribbonText, 65, 558);
+      ctx.font = '900 23px sans-serif';
+      ctx.fillText(ribbonText, 66, 557);
 
-      // Scalloped Badge (Right)
+      // 7. Right Circular Badge: BESPOKE DESIGN
       ctx.save();
-      ctx.translate(850, 570);
-      ctx.fillStyle = '#ca8a04';
+      ctx.translate(850, 560);
+      // Outer Gold Ring
       ctx.beginPath();
       ctx.arc(0, 0, 120, 0, Math.PI * 2);
+      const ringGrad = ctx.createLinearGradient(-120, -120, 120, 120);
+      ringGrad.addColorStop(0, '#fef08a');
+      ringGrad.addColorStop(0.3, '#f59e0b');
+      ringGrad.addColorStop(0.7, '#d97706');
+      ringGrad.addColorStop(1, '#92400e');
+      ctx.fillStyle = ringGrad;
       ctx.fill();
-      ctx.fillStyle = '#000000';
-      ctx.beginPath();
-      ctx.arc(0, 0, 95, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = '#facc15';
-      ctx.stroke();
 
+      // Inner Black Circle
+      ctx.beginPath();
+      ctx.arc(0, 0, 94, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.fill();
+
+      // Badge Text
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffffff';
       ctx.font = '900 36px sans-serif';
@@ -143,34 +160,33 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
       ctx.fillText(sealBottom, 0, 36);
       ctx.restore();
 
-      // Feature Box (Bottom Left)
+      // 8. Feature Box: Black container with Amber Border (2 columns x 3 items)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.92)';
       ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 4;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+      ctx.lineWidth = 5;
       ctx.fillRect(50, 680, 680, 240);
       ctx.strokeRect(50, 680, 680, 240);
 
-      // Features text (2 columns)
       ctx.fillStyle = '#ffffff';
       ctx.font = '700 24px sans-serif';
       ctx.textAlign = 'left';
 
-      // Col 1
+      // Column 1 (items 0, 1, 2)
       ctx.fillText(`⦿  ${features[0]}`, 75, 735);
       ctx.fillText(`⦿  ${features[1]}`, 75, 800);
       ctx.fillText(`⦿  ${features[2]}`, 75, 865);
 
-      // Col 2
+      // Column 2 (items 3, 4, 5)
       ctx.fillText(`⦿  ${features[3]}`, 410, 735);
       ctx.fillText(`⦿  ${features[4]}`, 410, 800);
       ctx.fillText(`⦿  ${features[5]}`, 410, 865);
 
-      // Bottom Pill: PROPERTY MANAGED BY...
+      // 9. Bottom Pill: PROPERTY MANAGED BY ENEZA EARNINGS
       ctx.save();
-      ctx.fillStyle = 'rgba(10, 10, 10, 0.92)';
+      ctx.fillStyle = 'rgba(8, 8, 8, 0.95)';
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 4;
-      
+
       const px = 140;
       const py = 960;
       const pw = 800;
@@ -197,36 +213,45 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
       ctx.fillText(managedBy, 540, 1002);
       ctx.restore();
 
-      // Trigger download
+      // 10. Trigger direct download of the rendered image file
       const link = document.createElement('a');
-      link.download = product.downloadFileName || 'eneza_sponsored_ad_flyer.jpg';
+      link.download = product.downloadFileName || 'eneza_royal_velvet_sofa_sale.jpg';
       link.href = canvas.toDataURL('image/jpeg', 0.95);
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
     };
 
-    img.onload = renderCanvasContent;
-    img.onerror = renderCanvasContent;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => renderPoster(img);
+    img.onerror = () => renderPoster(null);
+    img.src = product.imageBanner;
   };
+
+  useImperativeHandle(ref, () => ({
+    exportFlyer: handleExportFlyer,
+  }));
 
   return (
     <div className="flex flex-col items-center w-full">
       {/* Visual Flyer Container (Identical to reference screenshot) */}
       <div
         ref={flyerContainerRef}
-        className="relative w-full max-w-[480px] aspect-square rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-black text-white shadow-2xl select-none group flex flex-col justify-between p-4 sm:p-5"
+        className="relative w-full max-w-[480px] aspect-square rounded-2xl overflow-hidden border-2 border-amber-500/60 bg-black text-white shadow-2xl select-none group flex flex-col justify-between p-4 sm:p-5"
         style={{
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.9), 0 0 30px rgba(245, 158, 11, 0.15)',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.95), 0 0 30px rgba(245, 158, 11, 0.2)',
         }}
       >
         {/* Background Image Banner */}
-        <div className="absolute inset-0 z-0">
+        <div className="absolute inset-0 z-0 bg-zinc-950">
           <img
             src={product.imageBanner}
             alt={product.title}
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           {/* Top Dark Smoke Vignette */}
-          <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-black via-black/75 to-transparent pointer-events-none" />
+          <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-black via-black/80 to-transparent pointer-events-none" />
           {/* Bottom Dark Smoke Vignette */}
           <div className="absolute inset-x-0 bottom-0 h-52 bg-gradient-to-t from-black via-black/85 to-transparent pointer-events-none" />
           {/* Atmospheric Dark Cloud Overlays */}
@@ -266,7 +291,7 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
           </div>
         </div>
 
-        {/* MIDDLE SECTION: MAIN HEADLINE + RIBBON BANNER & SCALLOPED BADGE */}
+        {/* MIDDLE SECTION: MAIN HEADLINE + RIBBON BANNER & CIRCULAR BADGE */}
         <div className="relative z-10 my-auto flex items-end justify-between gap-2 pt-6">
           {/* Left Column: Headlines + Ribbon */}
           <div className="space-y-1 max-w-[65%]">
@@ -284,33 +309,17 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
               <div className="bg-amber-400 text-black px-2.5 py-0.5 font-black text-[10px] sm:text-[11px] uppercase tracking-wide rounded-xs shadow-md">
                 {ribbonText}
               </div>
-              <div
-                className="w-2.5 h-full bg-amber-500 absolute -right-2.5 top-0"
-                style={{
-                  clipPath: 'polygon(0 0, 100% 50%, 0 100%)',
-                }}
-              />
             </div>
           </div>
 
-          {/* Right Column: Scalloped Star Gold Seal Badge */}
+          {/* Right Column: BESPOKE DESIGN Gold Ring Badge */}
           <div className="relative shrink-0 flex items-center justify-center">
-            {/* Scalloped Gold Rosette */}
-            <div className="relative w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center">
-              {/* Outer Golden Star points */}
-              <div
-                className="absolute inset-0 rounded-full bg-gradient-to-tr from-amber-600 via-yellow-400 to-amber-300 shadow-xl"
-                style={{
-                  clipPath:
-                    'polygon(50% 0%, 63% 15%, 80% 10%, 85% 28%, 100% 35%, 95% 53%, 100% 70%, 85% 78%, 80% 95%, 63% 90%, 50% 100%, 37% 90%, 20% 95%, 15% 78%, 0% 70%, 5% 53%, 0% 35%, 15% 28%, 20% 10%, 37% 15%)',
-                }}
-              />
-              {/* Inner Black Circular Disc */}
-              <div className="relative z-10 w-16 h-16 sm:w-19 sm:h-19 rounded-full bg-black border-2 border-amber-400 flex flex-col items-center justify-center text-center text-white px-1 shadow-inner">
-                <span className="text-[11px] sm:text-xs font-black tracking-tight uppercase leading-none">
+            <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-yellow-200 via-amber-500 to-amber-700 p-1.5 sm:p-2 flex items-center justify-center shadow-2xl">
+              <div className="w-full h-full rounded-full bg-black flex flex-col items-center justify-center text-center text-white px-1 shadow-inner">
+                <span className="text-[10px] sm:text-[11px] font-black tracking-tight uppercase leading-none">
                   {sealTop}
                 </span>
-                <span className="text-[11px] sm:text-xs font-black tracking-tight uppercase leading-none mt-0.5">
+                <span className="text-[10px] sm:text-[11px] font-black tracking-tight uppercase leading-none mt-0.5">
                   {sealBottom}
                 </span>
               </div>
@@ -321,7 +330,7 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
         {/* BOTTOM SECTION: 2-COLUMN FEATURES BOX + MANAGED BY PILL */}
         <div className="relative z-10 space-y-2 mt-auto">
           {/* Orange-Bordered Feature Box */}
-          <div className="rounded-xs border-2 border-amber-500 bg-black/80 backdrop-blur-xs p-2.5 sm:p-3 shadow-xl">
+          <div className="rounded-xs border-2 border-amber-500 bg-black/90 backdrop-blur-xs p-2.5 sm:p-3 shadow-xl">
             <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] sm:text-[11px] font-bold text-zinc-100">
               {/* Column 1 */}
               <div className="space-y-1">
@@ -358,7 +367,7 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
           </div>
 
           {/* Bottom Managed By Pill */}
-          <div className="w-full py-1 px-3 rounded-full bg-black/90 border-2 border-white text-white text-center font-black text-[10px] sm:text-[11px] uppercase tracking-wider shadow-lg drop-shadow-md">
+          <div className="w-full py-1 px-3 rounded-full bg-black/95 border-2 border-white text-white text-center font-black text-[10px] sm:text-[11px] uppercase tracking-wider shadow-lg drop-shadow-md">
             {managedBy}
           </div>
         </div>
@@ -376,4 +385,7 @@ export const SponsoredProductFlyer: React.FC<SponsoredProductFlyerProps> = ({
       )}
     </div>
   );
-};
+});
+
+SponsoredProductFlyer.displayName = 'SponsoredProductFlyer';
+

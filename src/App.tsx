@@ -293,9 +293,11 @@ export default function App() {
         referrerId: referrer ? referrer.id : `ref_code_${refCode}`,
         referredUserId: newUser.id,
         referredUserName: `${newUser.firstName} ${newUser.lastName}`,
-        status: 'active',
-        bonusEarned: 150, // 150 KES referral lead bonus
-        createdAt: new Date().toISOString(),
+        referredUserPhone: newUser.phone,
+        date: new Date().toISOString(),
+        status: 'Active',
+        tierLevel: 1,
+        commissionEarned: 150, // 150 KES referral lead bonus
       };
 
       setReferrals((prev) => [newRef, ...prev]);
@@ -383,7 +385,7 @@ export default function App() {
   const handlePurchaseWhatsAppPackage = (pkg: WhatsAppPackageItem) => {
     if (!currentUser) return;
 
-    const userDepositBal = currentUser.depositBalance || 0;
+    const userDepositBal = Math.max(currentUser.depositBalance ?? 0, currentUser.balance ?? 0);
 
     // Check if user has deposited enough funds first
     if (userDepositBal < pkg.price) {
@@ -436,7 +438,8 @@ export default function App() {
 
     const updatedUser: User = {
       ...currentUser,
-      depositBalance: Math.max(0, userDepositBal - pkg.price),
+      depositBalance: Math.max(0, (currentUser.depositBalance ?? userDepositBal) - pkg.price),
+      balance: Math.max(0, (currentUser.balance ?? userDepositBal) - pkg.price),
       activeWhatsAppPackage: pkg.id,
       pendingCashbackTotal: (currentUser.pendingCashbackTotal || 0) + pkg.cashbackBonus,
     };
@@ -465,7 +468,7 @@ export default function App() {
   const handleClaimCashback = (item: CashbackItem) => {
     if (!currentUser) return;
     const requiredDepositFee = item.unlockFeeRequired || Math.round(item.cashbackAmount * 0.4);
-    const userDepositBal = currentUser.depositBalance || 0;
+    const userDepositBal = Math.max(currentUser.depositBalance ?? 0, currentUser.balance ?? 0);
 
     if (userDepositBal < requiredDepositFee) {
       setIsActivationMode(false);
@@ -547,7 +550,7 @@ export default function App() {
       (acc, curr) => acc + (curr.unlockFeeRequired || Math.round(curr.cashbackAmount * 0.4)),
       0
     );
-    const userDepositBal = currentUser.depositBalance || 0;
+    const userDepositBal = Math.max(currentUser.depositBalance ?? 0, currentUser.balance ?? 0);
 
     if (userDepositBal < totalRequiredFee) {
       setIsActivationMode(false);
@@ -715,7 +718,7 @@ export default function App() {
   const handleActivateAuthorizePackage = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.authorize;
-    const userDepositBal = currentUser.depositBalance || 0;
+    const userDepositBal = Math.max(currentUser.depositBalance ?? 0, currentUser.balance ?? 0);
 
     if (userDepositBal < pkg.price) {
       const shortfall = pkg.price - userDepositBal;
@@ -782,7 +785,7 @@ export default function App() {
   const handleActivateUnlockMpesa = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.unlockMpesa;
-    const userDepositBal = currentUser.depositBalance || 0;
+    const userDepositBal = Math.max(currentUser.depositBalance ?? 0, currentUser.balance ?? 0);
 
     if (userDepositBal < pkg.price) {
       const shortfall = pkg.price - userDepositBal;
@@ -849,7 +852,7 @@ export default function App() {
   const handleActivateAutomationPackage = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.automation;
-    const userDepositBal = currentUser.depositBalance || 0;
+    const userDepositBal = Math.max(currentUser.depositBalance ?? 0, currentUser.balance ?? 0);
 
     if (userDepositBal < pkg.price) {
       const shortfall = pkg.price - userDepositBal;
@@ -916,7 +919,7 @@ export default function App() {
   const handleActivateVerifiedAgent = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.verifiedAgent;
-    const userDepositBal = currentUser.depositBalance || 0;
+    const userDepositBal = Math.max(currentUser.depositBalance ?? 0, currentUser.balance ?? 0);
 
     if (userDepositBal < pkg.price) {
       const shortfall = pkg.price - userDepositBal;
@@ -984,7 +987,7 @@ export default function App() {
   const handleActivateUniversePackage = () => {
     if (!currentUser) return;
     const pkg = PIPELINE_PACKAGES.universe;
-    const userDepositBal = currentUser.depositBalance || 0;
+    const userDepositBal = Math.max(currentUser.depositBalance ?? 0, currentUser.balance ?? 0);
 
     if (userDepositBal < pkg.price) {
       const shortfall = pkg.price - userDepositBal;
@@ -999,7 +1002,7 @@ export default function App() {
         time: 'Just now',
         isRead: false,
         type: 'alert',
-      };
+        };
       setNotifications((prev) => [notif, ...prev]);
       return;
     }
@@ -1178,6 +1181,7 @@ export default function App() {
     } else {
       const updatedUser: User = {
         ...currentUser,
+        depositBalance: (currentUser.depositBalance || 0) + amount,
         balance: currentUser.balance + amount,
         totalEarned: currentUser.totalEarned + amount,
       };
@@ -1530,6 +1534,7 @@ export default function App() {
         {/* Sticky Top Header */}
         <TopHeader
           currentUser={currentUser}
+          currentView={currentView}
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
           onOpenDeposit={() => {
             setIsActivationMode(false);

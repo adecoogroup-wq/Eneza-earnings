@@ -82,7 +82,7 @@ export function getAllStoredUsers(): User[] {
 
 export function registerOrUpdateUser(user: Partial<User> & { id: string }): User {
   const map = globalThis._enezaRegisteredUsers || new Map<string, User>();
-  const existing = map.get(user.id) || {};
+  const existing: Partial<User> = map.get(user.id) || {};
 
   const merged: User = {
     id: user.id,
