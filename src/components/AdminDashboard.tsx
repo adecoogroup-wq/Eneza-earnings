@@ -4,6 +4,7 @@ import { INITIAL_PAYHERO_CONFIG, DAILY_PRODUCTS_CATALOG } from '../data/mockData
 import { safeFormatDateTime } from '../utils/dateUtils';
 import { validateSafaricomPhone } from '../utils/phoneValidation';
 import { SponsoredProductFlyer } from './SponsoredProductFlyer';
+import { getFormattedAccountNumber } from '../utils/accountNumber';
 import {
   ShieldAlert,
   Users,
@@ -1007,7 +1008,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div>
                             <span>{u.firstName} {u.lastName}</span>
                             <span className="block text-[10px] text-zinc-500 font-mono font-normal">
-                              @{u.username} • Code: <strong className="text-zinc-400">{u.referralCode}</strong>
+                              @{u.username} • Acc: <strong className="text-indigo-300 font-semibold">{getFormattedAccountNumber(u)}</strong> • Code: <strong className="text-zinc-400">{u.referralCode}</strong>
                             </span>
                           </div>
                         </div>
@@ -1098,12 +1099,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {/* Core Account Details Grid */}
                 <div className="grid grid-cols-2 gap-3 text-xs">
                   <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
-                    <span className="text-zinc-500 block text-[10px] uppercase font-bold">User ID</span>
-                    <span className="font-mono text-zinc-200 font-semibold break-all">{inspectingUser.id}</span>
+                    <span className="text-zinc-500 block text-[10px] uppercase font-bold">Account Number</span>
+                    <span className="font-mono text-indigo-300 font-bold tracking-wider">{getFormattedAccountNumber(inspectingUser)}</span>
                   </div>
                   <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
                     <span className="text-zinc-500 block text-[10px] uppercase font-bold">Phone Number</span>
                     <span className="font-mono text-zinc-200 font-semibold">{inspectingUser.phone}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
+                    <span className="text-zinc-500 block text-[10px] uppercase font-bold">User ID</span>
+                    <span className="font-mono text-zinc-200 font-semibold break-all">{inspectingUser.id}</span>
                   </div>
                   <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
                     <span className="text-zinc-500 block text-[10px] uppercase font-bold">Invited By (Referrer)</span>

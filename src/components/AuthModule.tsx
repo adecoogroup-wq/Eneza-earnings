@@ -3,6 +3,7 @@ import { User } from '../types';
 import { INITIAL_USERS } from '../data/mockData';
 import { ShieldCheck, UserCheck, Smartphone, KeyRound, Sparkles, ArrowRight, Gift, CheckCircle2 } from 'lucide-react';
 import { captureReferralCodeFromUrl, getCapturedReferralCode, clearCapturedReferralCode } from '../utils/userSync';
+import { generateNewAccountNumber } from '../utils/accountNumber';
 
 interface AuthModuleProps {
   onLogin: (user: User) => void;
@@ -151,6 +152,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
       firstName: first,
       lastName: last,
       phone: phone.trim(),
+      accountNumber: generateNewAccountNumber(phone),
       email: email.trim() || `${generatedUsername}@enezaearnings.ke`,
       password: signupPassword,
       role: 'user',

@@ -8,6 +8,7 @@ export interface User {
   firstName: string;
   lastName: string;
   phone: string; // e.g. 0712345678 or 254712345678
+  accountNumber?: string; // e.g. EE · 7056 · 1031
   email?: string;
   password?: string;
   role: UserRole;

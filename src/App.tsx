@@ -59,6 +59,7 @@ import {
   syncAllUsersWithBackend,
   mergeUserLists,
 } from './utils/userSync';
+import { getFormattedAccountNumber } from './utils/accountNumber';
 
 export default function App() {
   // Persistence key helpers
@@ -87,6 +88,7 @@ export default function App() {
       firstName: u.firstName || 'User',
       lastName: u.lastName || '',
       phone: u.phone || '0700000000',
+      accountNumber: u.accountNumber || getFormattedAccountNumber(u),
       email: u.email || '',
       password: u.password || '',
       role: u.role || 'user',
@@ -136,12 +138,33 @@ export default function App() {
   });
   const [currentView, setCurrentView] = useState<AppView>('userDashboardView');
   const [tasks, setTasks] = useState<EarningTask[]>(() => getStored('tasks', INITIAL_TASKS));
-  const [transactions, setTransactions] = useState<Transaction[]>(() =>
-    getStored('transactions', INITIAL_TRANSACTIONS)
-  );
-  const [referrals, setReferrals] = useState<Referral[]>(() =>
-    getStored('referrals', INITIAL_REFERRALS)
-  );
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    const raw = getStored<Transaction[]>('transactions', INITIAL_TRANSACTIONS);
+    if (!Array.isArray(raw) || raw.length === 0) return INITIAL_TRANSACTIONS;
+    // Remove outdated mock transactions from 21/22 Aug that do not belong to the user's real timeline
+    const cleaned = raw.filter((tx) => {
+      if (!tx || !tx.id) return false;
+      const legacyMockIds = [
+        'tx_101', 'tx_102', 'tx_103', 'tx_104', 'tx_105', 'tx_106', 'tx_107', 'tx_108',
+        'tx_rec_1', 'tx_rec_2', 'tx_rec_3', 'tx_rec_4', 'tx_rec_5'
+      ];
+      if (legacyMockIds.includes(tx.id)) return false;
+      if (
+        tx.mpesaReceiptNo &&
+        ['QK98XJ2841', 'QK98WF9182', 'QK98TG4430', 'QK98LQ7712', 'QK98AA1904', 'QK99PL4012', 'QK99WA2801', 'QK98PK9911', 'QK98CB8820', 'QK98IY1104'].includes(tx.mpesaReceiptNo)
+      ) {
+        return false;
+      }
+      return true;
+    });
+    return cleaned.length > 0 ? cleaned : INITIAL_TRANSACTIONS;
+  });
+  const [referrals, setReferrals] = useState<Referral[]>(() => {
+    const raw = getStored<Referral[]>('referrals', INITIAL_REFERRALS);
+    if (!Array.isArray(raw)) return [];
+    // Reset invited members to 0 (remove old mock referral records)
+    return raw.filter((r) => r && r.id && !['ref_1', 'ref_2', 'ref_3', 'ref_4'].includes(r.id));
+  });
   const [notifications, setNotifications] = useState<NotificationItem[]>(() =>
     getStored('notifications', INITIAL_NOTIFICATIONS)
   );

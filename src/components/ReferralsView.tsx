@@ -133,48 +133,69 @@ export const ReferralsView: React.FC<ReferralsViewProps> = ({ user, referrals })
           Invited Members & Downline ({referrals.length})
         </h3>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500 font-mono uppercase tracking-wider">
-                <th className="pb-3">Member</th>
-                <th className="pb-3">Phone</th>
-                <th className="pb-3">Tier Level</th>
-                <th className="pb-3">Date Joined</th>
-                <th className="pb-3">Status</th>
-                <th className="pb-3 text-right">Commission</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800/60 font-sans">
-              {referrals.map((ref) => (
-                <tr key={ref.id} className="hover:bg-zinc-800/30 transition">
-                  <td className="py-3 font-semibold text-zinc-200">{ref.referredUserName}</td>
-                  <td className="py-3 font-mono text-zinc-400">{ref.referredUserPhone}</td>
-                  <td className="py-3">
-                    <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono text-[11px]">
-                      Level {ref.tierLevel}
-                    </span>
-                  </td>
-                  <td className="py-3 text-zinc-400">{ref.date}</td>
-                  <td className="py-3">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        ref.status === 'Active'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}
-                    >
-                      {ref.status}
-                    </span>
-                  </td>
-                  <td className="py-3 text-right font-mono font-bold text-emerald-400">
-                    KES {(ref.commissionEarned || 0).toLocaleString()}
-                  </td>
+        {referrals.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-zinc-800 text-zinc-500 font-mono uppercase tracking-wider">
+                  <th className="pb-3">Member</th>
+                  <th className="pb-3">Phone</th>
+                  <th className="pb-3">Tier Level</th>
+                  <th className="pb-3">Date Joined</th>
+                  <th className="pb-3">Status</th>
+                  <th className="pb-3 text-right">Commission</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/60 font-sans">
+                {referrals.map((ref) => (
+                  <tr key={ref.id} className="hover:bg-zinc-800/30 transition">
+                    <td className="py-3 font-semibold text-zinc-200">{ref.referredUserName}</td>
+                    <td className="py-3 font-mono text-zinc-400">{ref.referredUserPhone}</td>
+                    <td className="py-3">
+                      <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono text-[11px]">
+                        Level {ref.tierLevel}
+                      </span>
+                    </td>
+                    <td className="py-3 text-zinc-400">{ref.date}</td>
+                    <td className="py-3">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          ref.status === 'Active'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        }`}
+                      >
+                        {ref.status}
+                      </span>
+                    </td>
+                    <td className="py-3 text-right font-mono font-bold text-emerald-400">
+                      KES {(ref.commissionEarned || 0).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="py-10 text-center space-y-3 bg-zinc-950/40 rounded-xl border border-dashed border-zinc-800">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
+              <Users className="w-6 h-6" />
+            </div>
+            <div className="space-y-1 max-w-sm mx-auto">
+              <p className="text-sm font-bold text-zinc-200">No invited members yet (0)</p>
+              <p className="text-xs text-zinc-400">
+                You haven't invited anyone yet. Copy and share your unique referral link to start earning up to KES 500 per activated recruit.
+              </p>
+            </div>
+            <button
+              onClick={handleCopyLink}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition inline-flex items-center gap-1.5"
+            >
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? 'Link Copied!' : 'Copy Invite Link'}</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

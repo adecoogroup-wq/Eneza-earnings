@@ -21,6 +21,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { AppView } from './Sidebar';
+import { getFormattedAccountNumber } from '../utils/accountNumber';
 
 interface UserDashboardProps {
   user: User;
@@ -137,7 +138,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const displayName = user?.firstName || user?.username || 'Chris';
-  const eeAccountNumber = `EE · 4399 · 5705`;
+  const eeAccountNumber = getFormattedAccountNumber(user);
 
   const handleCopyAccount = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -146,16 +147,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     setTimeout(() => setCopiedAccount(false), 2000);
   };
 
-  // Map real dynamic user transactions
+  // Map real dynamic user transactions strictly for this user
   const userTransactionsList = (transactions || []).filter((tx) => {
     if (!tx) return false;
-    if (user?.id && tx.userId && tx.userId !== user.id && tx.userId !== 'usr_001' && user.role !== 'admin') {
-      return false;
+    if (user?.id) {
+      return tx.userId === user.id || (user.phone && tx.userPhone === user.phone);
     }
-    return true;
+    return false;
   });
 
-  const displayTransactions = userTransactionsList.length > 0 ? userTransactionsList : (transactions || []);
+  const displayTransactions = userTransactionsList;
 
   const userRecentTransactions = displayTransactions.slice(0, 10).map((tx) => {
     const isCredit =
@@ -169,6 +170,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
     const isDebit =
       tx.type === 'package_purchase' ||
+      tx.type === 'whatsapp_package' ||
       tx.type === 'authorize_package' ||
       tx.type === 'unlock_mpesa' ||
       tx.type === 'automation_package' ||
@@ -180,7 +182,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       tx.type === 'cashback_fee' ||
       tx.type === 'tier_upgrade';
 
-    const isPositive = isCredit || !isDebit;
+    const isPositive = isCredit && !isDebit;
     const rawAmt = typeof tx.amount === 'number' && !isNaN(tx.amount) ? Math.abs(tx.amount) : 0;
     const displayAmount = isPositive ? rawAmt : -rawAmt;
 
@@ -224,7 +226,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     let categoryLabel = tx.description || 'Commission';
     if (tx.type === 'deposit') categoryLabel = tx.description || 'Recharge Deposit (M-Pesa STK)';
     else if (tx.type === 'whatsapp_views_earning') categoryLabel = tx.description || 'WhatsApp Status Views Earning';
-    else if (tx.type === 'package_purchase') categoryLabel = tx.description || 'Package purchase';
+    else if (tx.type === 'package_purchase' || tx.type === 'whatsapp_package') categoryLabel = tx.description || 'Package purchase';
     else if (tx.type === 'cashback_claim') categoryLabel = tx.description || 'Cashback Bonus Claim';
     else if (tx.type === 'referral_bonus') categoryLabel = tx.description || 'Referral Commission';
     else if (tx.type === 'investment_yield') categoryLabel = tx.description || 'Investment 300% Yield Harvest';
@@ -632,7 +634,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                           : 'text-[#ef4444]'
                       }`}
                     >
-                      {tx.isPositive ? '+' : ''}KES {Math.abs(tx.amount).toLocaleString()}
+                      {tx.isPositive ? '+KES ' : '-KES '}{Math.abs(tx.amount).toLocaleString()}
                     </div>
 
                     {/* Status Pill Badge */}
