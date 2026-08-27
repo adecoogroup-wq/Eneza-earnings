@@ -33,7 +33,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
     : 'C';
 
   // Determine dynamic title and subtitle matching user screenshots
-  let headerTitle = 'EarnWave Solutions';
+  let headerTitle = 'Eneza Earnings';
   let headerSubtitle = 'Welcome back · your WhatsApp wallets';
 
   if (currentView === 'whatsappPackagesView') {

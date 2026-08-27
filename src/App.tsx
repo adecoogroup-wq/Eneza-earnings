@@ -119,11 +119,16 @@ export default function App() {
   const [users, setUsers] = useState<User[]>(() => {
     const raw = getStored('users', INITIAL_USERS);
     const parsed = Array.isArray(raw) ? raw.map(normalizeUser) : INITIAL_USERS.map(normalizeUser);
-    const hasAdmin = parsed.some((u) => u.role === 'admin' || u.id === 'usr_admin');
-    if (!hasAdmin) {
-      return [INITIAL_USERS[0], ...parsed];
-    }
-    return parsed;
+    // Guarantee all standard initial members exist even if an older localStorage cache was present
+    const map = new Map<string, User>();
+    INITIAL_USERS.forEach((u) => map.set(u.id, normalizeUser(u)));
+    parsed.forEach((u) => {
+      if (u && u.id) {
+        const existing = map.get(u.id);
+        map.set(u.id, existing ? { ...existing, ...u } : u);
+      }
+    });
+    return Array.from(map.values());
   });
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = getStored<any | null>('current_user', null);
@@ -1111,6 +1116,14 @@ export default function App() {
     setTransactions((prev) => [invTx, ...prev]);
     setActiveInvestments((prev) => [newInvestment, ...prev]);
 
+    const updatedUser: User = {
+      ...currentUser,
+      depositBalance: Math.max(0, userDepositBal - amount),
+      totalDeposited: (currentUser.totalDeposited || 0) + amount,
+    };
+    setCurrentUser(updatedUser);
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updatedUser : u)));
+
     const newNotif: NotificationItem = {
       id: `notif_${Date.now()}`,
       title: 'Investment Plan Active!',
@@ -1619,6 +1632,11 @@ export default function App() {
             <AuthorizePackageView
               currentUser={currentUser}
               onActivateAuthorize={handleActivateAuthorizePackage}
+              onOpenDeposit={(amt) => {
+                if (amt) setDepositDefaultAmount(amt);
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
               onSwitchView={(v) => setCurrentView(v)}
             />
           )}
@@ -1628,6 +1646,11 @@ export default function App() {
             <UnlockMpesaView
               currentUser={currentUser}
               onActivateUnlockMpesa={handleActivateUnlockMpesa}
+              onOpenDeposit={(amt) => {
+                if (amt) setDepositDefaultAmount(amt);
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
               onSwitchView={(v) => setCurrentView(v)}
             />
           )}
@@ -1637,6 +1660,11 @@ export default function App() {
             <AutomationPackageView
               currentUser={currentUser}
               onActivateAutomation={handleActivateAutomationPackage}
+              onOpenDeposit={(amt) => {
+                if (amt) setDepositDefaultAmount(amt);
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
               onSwitchView={(v) => setCurrentView(v)}
             />
           )}
@@ -1646,6 +1674,11 @@ export default function App() {
             <VerifiedAgentView
               currentUser={currentUser}
               onActivateVerifiedAgent={handleActivateVerifiedAgent}
+              onOpenDeposit={(amt) => {
+                if (amt) setDepositDefaultAmount(amt);
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
               onSwitchView={(v) => setCurrentView(v)}
             />
           )}
@@ -1655,6 +1688,11 @@ export default function App() {
             <UniversePackageView
               currentUser={currentUser}
               onActivateUniverse={handleActivateUniversePackage}
+              onOpenDeposit={(amt) => {
+                if (amt) setDepositDefaultAmount(amt);
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
               onSwitchView={(v) => setCurrentView(v)}
             />
           )}
@@ -1666,6 +1704,11 @@ export default function App() {
               activeInvestments={activeInvestments}
               onInvest={handleInvestInPlan}
               onHarvestYield={handleHarvestYield}
+              onOpenDeposit={(amt) => {
+                if (amt) setDepositDefaultAmount(amt);
+                setIsActivationMode(false);
+                setIsDepositOpen(true);
+              }}
               onSwitchView={(v) => setCurrentView(v)}
             />
           )}

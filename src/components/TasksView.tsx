@@ -25,7 +25,6 @@ export const TasksView: React.FC<TasksViewProps> = ({ tasks, user, onSelectTask 
 
   const categories = [
     { id: 'all', label: 'All Tasks' },
-    { id: 'trivia', label: 'Trivia Quiz' },
     { id: 'video', label: 'Video Ads' },
     { id: 'survey', label: 'Surveys' },
     { id: 'captcha', label: 'Captchas' },
@@ -53,7 +52,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ tasks, user, onSelectTask 
           </div>
           <h2 className="text-xl font-bold text-white mt-1">Daily Earning Tasks</h2>
           <p className="text-xs text-zinc-400">
-            Complete quick quizzes, videos, and surveys to get credited in real-time.
+            Complete quick videos, surveys, and app tasks to get credited in real-time.
           </p>
         </div>
 

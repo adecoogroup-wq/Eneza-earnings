@@ -72,6 +72,7 @@ export type TransactionType =
   | 'tier_upgrade'
   | 'activation_fee'
   | 'whatsapp_package'
+  | 'package_purchase'
   | 'cashback_claim'
   | 'cashback_fee'
   | 'authorize_package'

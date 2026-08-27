@@ -137,102 +137,119 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   };
 
   const displayName = user?.firstName || user?.username || 'Chris';
-  const ewAccountNumber = `EW · 4399 · 5705`;
+  const eeAccountNumber = `EE · 4399 · 5705`;
 
   const handleCopyAccount = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard?.writeText(ewAccountNumber);
+    navigator.clipboard?.writeText(eeAccountNumber);
     setCopiedAccount(true);
     setTimeout(() => setCopiedAccount(false), 2000);
   };
 
-  // Recent transactions list (exact match to screenshot 7 + dynamic user history)
-  const defaultRecentTx = [
-    {
-      id: 'tx_rec_1',
-      date: '26 Aug 2026',
-      category: 'Commission',
-      amount: 1720,
-      isPositive: true,
-      status: 'Completed',
-    },
-    {
-      id: 'tx_rec_2',
-      date: '22 Aug 2026',
-      category: 'Package purchase',
-      amount: -12000,
-      isPositive: false,
-      status: 'Completed',
-    },
-    {
-      id: 'tx_rec_3',
-      date: '22 Aug 2026',
-      category: 'Package purchase',
-      amount: -8000,
-      isPositive: false,
-      status: 'Completed',
-    },
-    {
-      id: 'tx_rec_4',
-      date: '22 Aug 2026',
-      category: 'Package purchase',
-      amount: -7000,
-      isPositive: false,
-      status: 'Completed',
-    },
-    {
-      id: 'tx_rec_5',
-      date: '22 Aug 2026',
-      category: 'Adjustment',
-      amount: 41000,
-      isPositive: true,
-      status: 'Completed',
-    },
-  ];
+  // Map real dynamic user transactions
+  const userTransactionsList = (transactions || []).filter((tx) => {
+    if (!tx) return false;
+    if (user?.id && tx.userId && tx.userId !== user.id && tx.userId !== 'usr_001' && user.role !== 'admin') {
+      return false;
+    }
+    return true;
+  });
 
-  // Map user transactions or fallback to screenshot transactions
-  const userRecentTransactions =
-    transactions && transactions.length > 0
-      ? transactions.slice(0, 8).map((tx) => {
-          const isDepositOrBonus =
-            tx.type === 'deposit' ||
-            tx.type === 'referral_bonus' ||
-            tx.type === 'task_reward' ||
-            tx.type === 'spin_reward';
-          const isPurchaseOrWithdraw =
-            tx.type === 'package_purchase' ||
-            tx.type === 'withdrawal' ||
-            tx.type === 'activation_fee';
-          const isPositive = isDepositOrBonus || !isPurchaseOrWithdraw;
-          const displayAmount = isPositive ? Math.abs(tx.amount) : -Math.abs(tx.amount);
+  const displayTransactions = userTransactionsList.length > 0 ? userTransactionsList : (transactions || []);
 
-          const dateObj = new Date(tx.createdAt);
-          const dateStr = !isNaN(dateObj.getTime())
-            ? dateObj.toLocaleDateString('en-GB', {
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric',
-              })
-            : '26 Aug 2026';
+  const userRecentTransactions = displayTransactions.slice(0, 10).map((tx) => {
+    const isCredit =
+      tx.type === 'deposit' ||
+      tx.type === 'cashback_claim' ||
+      tx.type === 'investment_yield' ||
+      tx.type === 'whatsapp_views_earning' ||
+      tx.type === 'task_reward' ||
+      tx.type === 'referral_bonus' ||
+      tx.type === 'spin_reward';
 
-          let categoryLabel = 'Commission';
-          if (tx.type === 'package_purchase') categoryLabel = 'Package purchase';
-          else if (tx.type === 'deposit') categoryLabel = 'Recharge Deposit';
-          else if (tx.type === 'withdrawal') categoryLabel = 'Withdrawal';
-          else if (tx.type === 'referral_bonus') categoryLabel = 'Referral Bonus';
-          else if (tx.type === 'task_reward') categoryLabel = 'WhatsApp Earning';
-          else if (tx.description) categoryLabel = tx.description;
+    const isDebit =
+      tx.type === 'package_purchase' ||
+      tx.type === 'authorize_package' ||
+      tx.type === 'unlock_mpesa' ||
+      tx.type === 'automation_package' ||
+      tx.type === 'verified_agent' ||
+      tx.type === 'universe_package' ||
+      tx.type === 'investment_deposit' ||
+      tx.type === 'withdrawal' ||
+      tx.type === 'activation_fee' ||
+      tx.type === 'cashback_fee' ||
+      tx.type === 'tier_upgrade';
 
-          return {
-            id: tx.id,
-            date: dateStr,
-            category: categoryLabel,
-            amount: displayAmount,
-            isPositive,
-            status: 'Completed',
-          };
-        })
-      : defaultRecentTx;
+    const isPositive = isCredit || !isDebit;
+    const rawAmt = typeof tx.amount === 'number' && !isNaN(tx.amount) ? Math.abs(tx.amount) : 0;
+    const displayAmount = isPositive ? rawAmt : -rawAmt;
+
+    // Smart Date / Time formatting
+    const dateObj = new Date(tx.createdAt);
+    const isValidDate = !isNaN(dateObj.getTime());
+
+    let dateStr = '27 Aug 2026';
+    let timeStr = '';
+    if (isValidDate) {
+      const now = new Date();
+      const isToday =
+        dateObj.getDate() === now.getDate() &&
+        dateObj.getMonth() === now.getMonth() &&
+        dateObj.getFullYear() === now.getFullYear();
+
+      const isYesterday =
+        new Date(now.getTime() - 86400000).getDate() === dateObj.getDate() &&
+        dateObj.getMonth() === now.getMonth() &&
+        dateObj.getFullYear() === now.getFullYear();
+
+      timeStr = dateObj.toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      if (isToday) {
+        dateStr = `Today · ${timeStr}`;
+      } else if (isYesterday) {
+        dateStr = `Yesterday · ${timeStr}`;
+      } else {
+        dateStr = `${dateObj.toLocaleDateString('en-GB', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        })}`;
+      }
+    }
+
+    // Precise Category Label
+    let categoryLabel = tx.description || 'Commission';
+    if (tx.type === 'deposit') categoryLabel = tx.description || 'Recharge Deposit (M-Pesa STK)';
+    else if (tx.type === 'whatsapp_views_earning') categoryLabel = tx.description || 'WhatsApp Status Views Earning';
+    else if (tx.type === 'package_purchase') categoryLabel = tx.description || 'Package purchase';
+    else if (tx.type === 'cashback_claim') categoryLabel = tx.description || 'Cashback Bonus Claim';
+    else if (tx.type === 'referral_bonus') categoryLabel = tx.description || 'Referral Commission';
+    else if (tx.type === 'investment_yield') categoryLabel = tx.description || 'Investment 300% Yield Harvest';
+    else if (tx.type === 'investment_deposit') categoryLabel = tx.description || 'Investment Capital Deployed';
+    else if (tx.type === 'spin_reward') categoryLabel = tx.description || 'Lucky Wheel Spin Reward';
+    else if (tx.type === 'withdrawal') categoryLabel = tx.description || 'M-Pesa Cashout Withdrawal';
+    else if (tx.type === 'activation_fee') categoryLabel = tx.description || 'Account Activation Fee';
+
+    // Status format
+    let statusText = 'Completed';
+    if (tx.status === 'pending') statusText = 'Pending';
+    else if (tx.status === 'failed' || tx.status === 'rejected') statusText = 'Failed';
+    else if (tx.status === 'processing') statusText = 'Processing';
+
+    return {
+      id: tx.id,
+      date: dateStr,
+      time: timeStr,
+      category: categoryLabel,
+      amount: displayAmount,
+      isPositive,
+      status: statusText,
+      mpesaReceiptNo: tx.mpesaReceiptNo,
+    };
+  });
 
   return (
     <div className="space-y-4 max-w-xl sm:max-w-2xl lg:max-w-3xl mx-auto pb-10">
@@ -330,7 +347,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         {/* Top Card Row: Brand & Gold EMV Chip + Contactless Wave */}
         <div className="flex items-center justify-between relative z-10">
           <div className="text-lg sm:text-xl font-black tracking-tight flex items-center gap-1">
-            <span className="text-white font-black">EarnWave</span>
+            <span className="text-white font-black tracking-wider uppercase">ENEZA EARNINGS</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -382,7 +399,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             ACCOUNT NUMBER
           </div>
           <div className="font-mono text-sm sm:text-base font-bold text-slate-200 tracking-[0.2em] mt-0.5">
-            {ewAccountNumber}
+            {eeAccountNumber}
           </div>
         </div>
 
@@ -488,11 +505,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             DEPOSIT BALANCE
           </div>
           <div className="text-3xl sm:text-4xl font-black font-mono tracking-tight mt-1">
-            {formatCurrency(
-              user.depositBalance !== undefined && user.depositBalance > 0
-                ? user.depositBalance
-                : user.balance || 14000
-            )}
+            {formatCurrency(user.depositBalance || 0)}
           </div>
           <div className="text-xs text-white/90 mt-2 font-medium">
             Buy packs · cash-out gate
@@ -522,11 +535,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             CASHBACK BALANCE
           </div>
           <div className="text-3xl sm:text-4xl font-black font-mono tracking-tight mt-1">
-            {formatCurrency(
-              user.pendingCashbackTotal !== undefined && user.pendingCashbackTotal > 0
-                ? user.pendingCashbackTotal
-                : 54000
-            )}
+            {formatCurrency(user.pendingCashbackTotal || 0)}
           </div>
           <div className="text-xs text-white/90 mt-2 font-medium">
             Pending · claims KES 0
@@ -537,44 +546,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         <div className="absolute -bottom-10 -right-10 w-44 h-44 bg-pink-300/30 rounded-full blur-2xl pointer-events-none" />
       </div>
 
-      {/* 9. UNLOCK WRITING PLATFORMS & 2X CASHBACK CARD */}
-      <div
-        onClick={() => onSwitchView('whatsappPackagesView')}
-        className="relative overflow-hidden rounded-[26px] p-6 text-slate-800 bg-gradient-to-r from-[#86efac] via-[#67e8f9] to-[#93c5fd] shadow-lg transition-transform active:scale-[0.99] cursor-pointer"
-      >
-        <div className="relative z-10">
-          <p className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
-            Unlock writing platforms and 2× cashback packs.
-          </p>
-          <div className="mt-4 flex items-center gap-1.5 text-xs font-black text-emerald-800 uppercase tracking-wider">
-            <span>✍️</span>
-            <span>EARN</span>
-          </div>
-        </div>
-        <div className="absolute -right-6 -bottom-6 w-36 h-36 bg-white/30 rounded-full blur-xl pointer-events-none" />
-      </div>
-
-      {/* 10. TRIVIA QUESTIONS (Purple/Pink Gradient Card - Matching Screenshot 7) */}
-      <div
-        onClick={() => onSwitchView('tasksView')}
-        className="relative overflow-hidden rounded-[26px] p-6 text-white bg-gradient-to-r from-[#9333ea] via-[#c026d3] to-[#db2777] shadow-xl shadow-pink-500/20 transition-transform active:scale-[0.99] cursor-pointer"
-      >
-        <div className="relative z-10">
-          <h3 className="text-lg sm:text-xl font-black tracking-tight text-white">
-            Trivia Questions
-          </h3>
-          <p className="text-xs sm:text-sm text-white/90 mt-1 font-medium">
-            Answer daily questions and credit WhatsApp earning.
-          </p>
-          <div className="mt-4 flex items-center gap-1.5 text-xs font-black text-pink-200 uppercase tracking-wider">
-            <span>💜</span>
-            <span>EARN</span>
-          </div>
-        </div>
-        <div className="absolute -right-6 -bottom-6 w-36 h-36 bg-pink-400/30 rounded-full blur-xl pointer-events-none" />
-      </div>
-
-      {/* 11. RECENT TRANSACTIONS TABLE (Exact Match to Screenshot 7 - Replaces Platform Live Activity block) */}
+      {/* 9. RECENT TRANSACTIONS TABLE (Exact Match to Screenshot 7 - Real Dynamic Transaction Data) */}
       <div
         className={`${
           isDarkMode
@@ -582,66 +554,120 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             : 'bg-white/95 border-slate-200/90'
         } border rounded-[26px] p-5 sm:p-6 shadow-xs space-y-4 transition-all duration-300`}
       >
-        <h2
-          className={`text-xl font-black tracking-tight ${
-            isDarkMode ? 'text-zinc-100' : 'text-slate-900'
-          }`}
-        >
-          Recent Transactions
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2
+            className={`text-xl font-black tracking-tight ${
+              isDarkMode ? 'text-zinc-100' : 'text-slate-900'
+            }`}
+          >
+            Recent Transactions
+          </h2>
+          <button
+            onClick={() => onSwitchView('cashierView')}
+            className="text-xs font-bold text-emerald-500 hover:text-emerald-400 flex items-center gap-1 transition cursor-pointer"
+          >
+            <span>View Statement</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
 
         {/* Table Container */}
         <div className="w-full">
           {/* Table Header */}
-          <div className="grid grid-cols-3 text-[11px] font-bold tracking-wider uppercase text-slate-400 pb-2 border-b border-slate-100 dark:border-slate-800">
-            <div>DATE</div>
-            <div className="text-center sm:text-left">AMOUNT</div>
-            <div className="text-right">STATUS</div>
+          <div className="grid grid-cols-12 text-[11px] font-bold tracking-wider uppercase text-slate-400 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="col-span-6 sm:col-span-5">DATE & DESCRIPTION</div>
+            <div className="col-span-3 sm:col-span-4 text-right sm:text-left">AMOUNT</div>
+            <div className="col-span-3 text-right">STATUS</div>
           </div>
 
           {/* Table Rows */}
-          <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
-            {userRecentTransactions.map((tx) => (
-              <div
-                key={tx.id}
-                className="py-3.5 grid grid-cols-3 items-center gap-2 text-xs"
-              >
-                {/* Date & Category */}
-                <div>
-                  <div className="font-bold text-slate-900 dark:text-zinc-100">
-                    {tx.date}
-                  </div>
-                  <div className="text-slate-400 text-[11px] mt-0.5">
-                    {tx.category}
-                  </div>
-                </div>
+          {userRecentTransactions.length > 0 ? (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
+              {userRecentTransactions.map((tx) => {
+                let statusBadgeClasses = isDarkMode
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-[#d8f5e7] text-[#15803d]';
 
-                {/* Amount */}
-                <div
-                  className={`font-mono font-bold text-sm ${
-                    tx.isPositive
-                      ? 'text-[#10b981]'
-                      : 'text-[#ef4444]'
-                  }`}
-                >
-                  KES {tx.amount.toLocaleString()}
-                </div>
+                if (tx.status === 'Pending') {
+                  statusBadgeClasses = isDarkMode
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : 'bg-amber-100 text-amber-800';
+                } else if (tx.status === 'Processing') {
+                  statusBadgeClasses = isDarkMode
+                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                    : 'bg-blue-100 text-blue-800';
+                } else if (tx.status === 'Failed') {
+                  statusBadgeClasses = isDarkMode
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                    : 'bg-rose-100 text-rose-800';
+                }
 
-                {/* Status Pill Badge */}
-                <div className="text-right">
-                  <span
-                    className={`inline-block px-3 py-1 rounded-full text-[11px] font-bold ${
-                      isDarkMode
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : 'bg-[#d8f5e7] text-[#15803d]'
-                    }`}
+                return (
+                  <div
+                    key={tx.id}
+                    className="py-3.5 grid grid-cols-12 items-center gap-2 text-xs"
                   >
-                    {tx.status}
-                  </span>
-                </div>
+                    {/* Date & Category */}
+                    <div className="col-span-6 sm:col-span-5 pr-1">
+                      <div className="font-bold text-slate-900 dark:text-zinc-100 truncate">
+                        {tx.date}
+                      </div>
+                      <div className="text-slate-400 text-[11px] mt-0.5 font-medium truncate">
+                        {tx.category}
+                      </div>
+                      {tx.mpesaReceiptNo && (
+                        <div className="mt-1">
+                          <span className="inline-block text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                            {tx.mpesaReceiptNo}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Amount */}
+                    <div
+                      className={`col-span-3 sm:col-span-4 font-mono font-bold text-xs sm:text-sm text-right sm:text-left ${
+                        tx.isPositive
+                          ? 'text-[#10b981]'
+                          : 'text-[#ef4444]'
+                      }`}
+                    >
+                      {tx.isPositive ? '+' : ''}KES {Math.abs(tx.amount).toLocaleString()}
+                    </div>
+
+                    {/* Status Pill Badge */}
+                    <div className="col-span-3 text-right">
+                      <span
+                        className={`inline-block px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-bold ${statusBadgeClasses}`}
+                      >
+                        {tx.status}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-8 text-center space-y-3">
+              <p className="text-xs text-slate-400 font-medium">
+                No recent transactions recorded on your account yet.
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={onOpenDeposit}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition"
+                >
+                  Deposit via M-Pesa
+                </button>
+                <button
+                  onClick={() => onSwitchView('whatsappPostView')}
+                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold border border-zinc-700 transition"
+                >
+                  Post WhatsApp Ad
+                </button>
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

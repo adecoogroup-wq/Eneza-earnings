@@ -10,25 +10,37 @@ import {
   ArrowRight,
   Sparkles,
   Cpu,
+  Wallet,
+  Smartphone,
+  AlertCircle,
 } from 'lucide-react';
 import { AppView } from './Sidebar';
 
 interface AutomationPackageViewProps {
   currentUser: User;
   onActivateAutomation: () => void;
+  onOpenDeposit?: (amount?: number) => void;
   onSwitchView: (view: AppView) => void;
 }
 
 export const AutomationPackageView: React.FC<AutomationPackageViewProps> = ({
   currentUser,
   onActivateAutomation,
+  onOpenDeposit,
   onSwitchView,
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const pkg = PIPELINE_PACKAGES.automation;
   const isPurchased = currentUser.isAutomationPackagePurchased;
+  const userDepositBalance = currentUser.depositBalance || 0;
+  const hasEnoughDeposit = userDepositBalance >= pkg.price;
+  const shortfall = Math.max(0, pkg.price - userDepositBalance);
 
   const handleActivate = () => {
+    if (!hasEnoughDeposit && onOpenDeposit) {
+      onOpenDeposit(shortfall);
+      return;
+    }
     setIsProcessing(true);
     setTimeout(() => {
       onActivateAutomation();
@@ -64,6 +76,38 @@ export const AutomationPackageView: React.FC<AutomationPackageViewProps> = ({
               <span>Includes KES {(pkg?.cashbackBonus || 0).toLocaleString()} Guaranteed Cashback</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Available Deposit Status Strip */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900 border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+            <Wallet className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[11px] text-zinc-400 block font-medium">Available Deposit Balance</span>
+            <div className="text-2xl font-black font-mono text-emerald-400">
+              KES {userDepositBalance.toLocaleString()}
+            </div>
+          </div>
+        </div>
+
+        <div className="text-xs text-zinc-400 font-medium">
+          {hasEnoughDeposit ? (
+            <span className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+              <CheckCircle2 className="w-4 h-4" />
+              Ready to buy using available deposit
+            </span>
+          ) : (
+            <button
+              onClick={() => onOpenDeposit && onOpenDeposit(shortfall)}
+              className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Deposit KES {shortfall.toLocaleString()} to Buy</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -114,15 +158,23 @@ export const AutomationPackageView: React.FC<AutomationPackageViewProps> = ({
               <span className="text-emerald-400 font-bold flex items-center gap-1.5">
                 <Check className="w-4 h-4" /> Package Active & Verified!
               </span>
+            ) : hasEnoughDeposit ? (
+              <span className="text-emerald-400 font-medium flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4" />
+                Deducts KES {pkg.price.toLocaleString()} from available deposit.
+              </span>
             ) : (
-              <span>Instant automated provisioning upon M-Pesa payment confirmation.</span>
+              <span className="text-amber-400 flex items-center gap-1">
+                <AlertCircle className="w-4 h-4" />
+                Top up KES {shortfall.toLocaleString()} to complete purchase.
+              </span>
             )}
           </div>
 
           {isPurchased ? (
             <button
               onClick={() => onSwitchView('whatsappEarningsView')}
-              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition"
+              className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
             >
               <span>Go to WhatsApp Earnings</span>
               <ArrowRight className="w-4 h-4" />
@@ -131,17 +183,26 @@ export const AutomationPackageView: React.FC<AutomationPackageViewProps> = ({
             <button
               onClick={handleActivate}
               disabled={isProcessing}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition active:scale-[0.99] bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-950/40"
+              className={`w-full sm:w-auto px-8 py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition active:scale-[0.99] cursor-pointer ${
+                hasEnoughDeposit
+                  ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-950/40'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/40'
+              }`}
             >
               {isProcessing ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Activating Automation...
+                  Activating Automation with Deposit...
                 </span>
-              ) : (
+              ) : hasEnoughDeposit ? (
                 <>
                   <Zap className="w-4 h-4" />
-                  <span>Activate Automation (KES {(pkg?.price || 0).toLocaleString()})</span>
+                  <span>Buy with Available Deposit (KES {(pkg?.price || 0).toLocaleString()})</span>
+                </>
+              ) : (
+                <>
+                  <Smartphone className="w-4 h-4" />
+                  <span>Deposit KES {shortfall.toLocaleString()} to Activate</span>
                 </>
               )}
             </button>
