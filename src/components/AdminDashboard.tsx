@@ -31,6 +31,7 @@ import {
   Eye,
   EyeOff,
   User as UserIcon,
+  UserPlus,
   Hash,
   X,
   ShoppingBag,
@@ -112,6 +113,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setIsSyncingMembers(false);
     }
   };
+
+  // Auto-sync on mount and periodic 4s live polling
+  useEffect(() => {
+    if (onSyncMembers) {
+      onSyncMembers();
+      const interval = setInterval(() => {
+        onSyncMembers();
+      }, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [onSyncMembers]);
+
+  // Add Member Modal State (for admin to manually onboard members)
+  const [showAddMemberModal, setShowAddMemberModal] = useState<boolean>(false);
+  const [newMemberForm, setNewMemberForm] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    username: '',
+    email: '',
+    password: '',
+    referredBy: '',
+    initialSpendable: 0,
+    initialWhatsapp: 0,
+    initialDeposit: 0,
+    tier: 'Standard' as TierLevel,
+    isActivated: false,
+  });
+  const [isAddingMemberLoading, setIsAddingMemberLoading] = useState<boolean>(false);
 
   // Sponsored Products Catalog State
   const [productsCatalog, setProductsCatalog] = useState<DailyProductItem[]>(DAILY_PRODUCTS_CATALOG);
@@ -327,7 +357,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* ========================================== */}
       {adminTab === 'overview' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             
             <div className="p-5 rounded-2xl bg-zinc-900/70 border border-zinc-800">
               <span className="text-[11px] text-zinc-400 font-mono uppercase font-semibold">Total Deposits / Volume</span>
@@ -343,6 +373,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 KES {(totalPayouts || 0).toLocaleString()}
               </h3>
               <span className="text-[11px] text-zinc-500 mt-1 block">Successfully disbursed</span>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-zinc-900/70 border border-indigo-500/30">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-indigo-300 font-mono uppercase font-semibold">Registered Members</span>
+                <button
+                  onClick={() => setAdminTab('users')}
+                  className="text-[10px] text-indigo-400 hover:underline font-bold"
+                >
+                  View All →
+                </button>
+              </div>
+              <h3 className="text-2xl font-black font-mono text-indigo-400 mt-2">
+                {users.length} Users
+              </h3>
+              <span className="text-[11px] text-emerald-400 mt-1 block">
+                ● {users.filter((u) => u.isActivated).length} Activated ({users.filter((u) => !u.isActivated).length} Pending)
+              </span>
             </div>
 
             <div className="p-5 rounded-2xl bg-zinc-900/70 border border-amber-500/30">
@@ -361,6 +409,113 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span className="text-[11px] text-emerald-400 mt-1 block">● 100% Solvency Ratio</span>
             </div>
 
+          </div>
+
+          {/* Recent Registered Members Quick Table */}
+          <div className="p-6 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-indigo-400" />
+                Recent Registered Members ({users.length} Total in Central Registry)
+              </h3>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleTriggerSync}
+                  disabled={isSyncingMembers}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isSyncingMembers ? 'animate-spin text-emerald-400' : ''}`} />
+                  {isSyncingMembers ? 'Syncing...' : 'Sync Live'}
+                </button>
+                <button
+                  onClick={() => setAdminTab('users')}
+                  className="text-xs text-indigo-400 hover:underline font-semibold cursor-pointer"
+                >
+                  View All Members ({users.length}) →
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-zinc-800 text-zinc-500 font-mono">
+                    <th className="pb-2 font-semibold">Member</th>
+                    <th className="pb-2 font-semibold">Phone</th>
+                    <th className="pb-2 font-semibold">Inviter / Ref</th>
+                    <th className="pb-2 font-semibold">Status</th>
+                    <th className="pb-2 font-semibold text-emerald-400">Spendable</th>
+                    <th className="pb-2 font-semibold text-blue-400">WhatsApp</th>
+                    <th className="pb-2 font-semibold text-amber-400">Deposit</th>
+                    <th className="pb-2 font-semibold">Registered</th>
+                    <th className="pb-2 font-semibold text-right">Quick Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/50">
+                  {users.slice(0, 5).map((u) => (
+                    <tr key={u.id} className="hover:bg-zinc-800/30 transition-colors">
+                      <td className="py-2.5 font-semibold text-white">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-300 font-bold shrink-0">
+                            {(u.firstName || 'U')[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <span className="font-bold text-zinc-100">{u.firstName} {u.lastName}</span>
+                            <span className="block text-[10px] text-zinc-500 font-mono">@{u.username} • {u.referralCode}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-2.5 font-mono text-zinc-300">{u.phone}</td>
+                      <td className="py-2.5">
+                        {u.referredBy ? (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold">
+                            {u.referredBy}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-zinc-500 font-mono">Direct</span>
+                        )}
+                      </td>
+                      <td className="py-2.5">
+                        {u.isActivated ? (
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[10px]">
+                            Pending
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 font-mono font-bold text-emerald-400">
+                        KES {(u.balance || 0).toLocaleString()}
+                      </td>
+                      <td className="py-2.5 font-mono text-blue-400 font-bold">
+                        KES {(u.whatsappBalance || u.balance || 0).toLocaleString()}
+                      </td>
+                      <td className="py-2.5 font-mono text-amber-400 font-semibold">
+                        KES {(u.depositBalance || 0).toLocaleString()}
+                      </td>
+                      <td className="py-2.5 font-mono text-[10px] text-zinc-500">
+                        {u.createdAt ? safeFormatDateTime(u.createdAt) : 'Recent'}
+                      </td>
+                      <td className="py-2.5 text-right">
+                        <button
+                          onClick={() => {
+                            setBalanceTargetUser(u);
+                            setAdjustAmount(500);
+                            setBalanceCategory('whatsapp');
+                            setBalanceMode('delta');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition flex items-center gap-1 ml-auto cursor-pointer"
+                        >
+                          <Coins className="w-3 h-3" /> Add Funds
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Quick Pending Withdrawal Queue */}
@@ -965,6 +1120,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="w-full rounded-xl bg-zinc-950 border border-zinc-800 pl-8 pr-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
                 />
               </div>
+
+              <button
+                onClick={() => setShowAddMemberModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-md cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Member</span>
+              </button>
 
               {onSyncMembers && (
                 <button
@@ -2433,6 +2596,235 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span>Save & Publish Creative to Rotation Catalog</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL: ADD NEW MEMBER DIRECTLY (ADMIN)     */}
+      {/* ========================================== */}
+      {showAddMemberModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 my-8 animate-fadeIn">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">Direct Member Onboarding</h3>
+                  <p className="text-[11px] text-zinc-400">Add a new user with custom initial balances to central cloud database</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddMemberModal(false)}
+                className="w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 mb-1">First Name *</label>
+                  <input
+                    type="text"
+                    value={newMemberForm.firstName}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, firstName: e.target.value })}
+                    placeholder="e.g. Kelvin"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 mb-1">Last Name</label>
+                  <input
+                    type="text"
+                    value={newMemberForm.lastName}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, lastName: e.target.value })}
+                    placeholder="e.g. Mwangi"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 mb-1">Safaricom Phone *</label>
+                  <input
+                    type="text"
+                    value={newMemberForm.phone}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, phone: e.target.value })}
+                    placeholder="e.g. 0712345678"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 mb-1">Username (Optional)</label>
+                  <input
+                    type="text"
+                    value={newMemberForm.username}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, username: e.target.value })}
+                    placeholder="e.g. kelvin_m"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 mb-1">Login Password</label>
+                  <input
+                    type="text"
+                    value={newMemberForm.password}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, password: e.target.value })}
+                    placeholder="Default: 123456"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-zinc-300 mb-1">Referred By Code / Inviter</label>
+                  <input
+                    type="text"
+                    value={newMemberForm.referredBy}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, referredBy: e.target.value.toUpperCase() })}
+                    placeholder="e.g. ENEZAPRO or EE1234"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-amber-400 font-mono font-bold focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold text-emerald-400 mb-1">Initial Spendable</label>
+                  <input
+                    type="number"
+                    value={newMemberForm.initialSpendable}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, initialSpendable: Number(e.target.value) })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-emerald-300 font-mono font-bold focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-blue-400 mb-1">WhatsApp Balance</label>
+                  <input
+                    type="number"
+                    value={newMemberForm.initialWhatsapp}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, initialWhatsapp: Number(e.target.value) })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-blue-300 font-mono font-bold focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-amber-400 mb-1">Deposit Balance</label>
+                  <input
+                    type="number"
+                    value={newMemberForm.initialDeposit}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, initialDeposit: Number(e.target.value) })}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-amber-300 font-mono font-bold focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-950 border border-zinc-800">
+                <div>
+                  <span className="font-bold text-white block">Account Activation Status</span>
+                  <span className="text-[10px] text-zinc-400">Mark account as active / fee paid</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newMemberForm.isActivated}
+                    onChange={(e) => setNewMemberForm({ ...newMemberForm, isActivated: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setShowAddMemberModal(false)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isAddingMemberLoading || (!newMemberForm.phone.trim() && !newMemberForm.username.trim())}
+                onClick={async () => {
+                  if (!newMemberForm.phone.trim() && !newMemberForm.username.trim()) {
+                    showToast('Phone or username is required', 'error');
+                    return;
+                  }
+                  setIsAddingMemberLoading(true);
+                  try {
+                    const cleanPhone = newMemberForm.phone.replace(/\D/g, '');
+                    const generatedUsername = (newMemberForm.username.trim() || `user_${cleanPhone.slice(-4) || Date.now().toString().slice(-4)}`).toLowerCase();
+                    const newUserId = `usr_${Date.now()}`;
+                    const createdUser: User = {
+                      id: newUserId,
+                      username: generatedUsername,
+                      firstName: newMemberForm.firstName.trim() || 'Member',
+                      lastName: newMemberForm.lastName.trim() || '',
+                      phone: newMemberForm.phone.trim(),
+                      email: newMemberForm.email.trim() || `${generatedUsername}@enezaearnings.ke`,
+                      password: newMemberForm.password.trim() || '123456',
+                      role: 'user',
+                      isActivated: Boolean(newMemberForm.isActivated),
+                      tier: newMemberForm.tier || 'Standard',
+                      balance: Number(newMemberForm.initialSpendable || 0),
+                      whatsappBalance: Number(newMemberForm.initialWhatsapp || newMemberForm.initialSpendable || 0),
+                      depositBalance: Number(newMemberForm.initialDeposit || 0),
+                      pendingBalance: 0,
+                      totalWithdrawn: 0,
+                      totalEarned: Number(newMemberForm.initialSpendable || 0),
+                      referralCode: `EE${Math.floor(1000 + Math.random() * 9000)}`,
+                      referredBy: newMemberForm.referredBy.trim() || undefined,
+                      spinsRemaining: 1,
+                      tasksCompletedToday: 0,
+                      maxTasksPerDay: 5,
+                      pendingCashbackTotal: 0,
+                      isAuthorizedPackagePurchased: false,
+                      isUnlockMpesaPurchased: false,
+                      isAutomationPackagePurchased: false,
+                      isVerifiedAgentPurchased: false,
+                      isUniversePackagePurchased: false,
+                      createdAt: new Date().toISOString(),
+                    };
+
+                    onUpdateUserDetails(createdUser.id, createdUser);
+                    if (onSyncMembers) {
+                      await onSyncMembers();
+                    }
+                    showToast(`Member @${createdUser.username} successfully onboarded!`);
+                    setShowAddMemberModal(false);
+                    setNewMemberForm({
+                      firstName: '',
+                      lastName: '',
+                      phone: '',
+                      username: '',
+                      email: '',
+                      password: '',
+                      referredBy: '',
+                      initialSpendable: 0,
+                      initialWhatsapp: 0,
+                      initialDeposit: 0,
+                      tier: 'Standard',
+                      isActivated: false,
+                    });
+                  } catch (err: any) {
+                    showToast(err?.message || 'Error creating member', 'error');
+                  } finally {
+                    setIsAddingMemberLoading(false);
+                  }
+                }}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{isAddingMemberLoading ? 'Saving...' : 'Create & Save Member'}</span>
+              </button>
             </div>
           </div>
         </div>

@@ -187,41 +187,51 @@ export async function syncAllUsersWithBackend(clientUsers: User[]): Promise<User
 export function mergeUserLists(local: User[], remote: User[]): User[] {
   const map = new Map<string, User>();
 
-  // Add initial users first
-  INITIAL_USERS.forEach((u) => map.set(u.id, { ...u }));
-
-  // Add local users
-  local.forEach((u) => {
+  // 1. Add initial seed users
+  INITIAL_USERS.forEach((u) => {
     if (u && u.id) map.set(u.id, { ...u });
   });
 
-  // Merge remote users (takes precedence on updated balances / status)
-  remote.forEach((u) => {
-    if (u && u.id) {
-      const existing = map.get(u.id);
-      if (existing) {
-        map.set(u.id, {
-          ...existing,
-          ...u,
-          // Retain whichever balance is higher or most recent
-          balance: Math.max(existing.balance || 0, u.balance || 0),
-          depositBalance: Math.max(existing.depositBalance || 0, u.depositBalance || 0),
-          whatsappBalance: Math.max(existing.whatsappBalance || 0, u.whatsappBalance || 0),
-          isActivated: existing.isActivated || u.isActivated,
-          isAuthorizedPackagePurchased: existing.isAuthorizedPackagePurchased || u.isAuthorizedPackagePurchased,
-          isUnlockMpesaPurchased: existing.isUnlockMpesaPurchased || u.isUnlockMpesaPurchased,
-          isAutomationPackagePurchased: existing.isAutomationPackagePurchased || u.isAutomationPackagePurchased,
-          isVerifiedAgentPurchased: existing.isVerifiedAgentPurchased || u.isVerifiedAgentPurchased,
-          isUniversePackagePurchased: existing.isUniversePackagePurchased || u.isUniversePackagePurchased,
-        });
-      } else {
-        map.set(u.id, u);
+  // 2. Add local users (from localStorage/state)
+  if (Array.isArray(local)) {
+    local.forEach((u) => {
+      if (u && u.id) {
+        const existing = map.get(u.id);
+        map.set(u.id, existing ? { ...existing, ...u } : { ...u });
       }
-    }
-  });
+    });
+  }
+
+  // 3. Merge remote users (central server source of truth)
+  if (Array.isArray(remote)) {
+    remote.forEach((u) => {
+      if (u && u.id) {
+        const existing = map.get(u.id);
+        if (existing) {
+          map.set(u.id, {
+            ...existing,
+            ...u,
+            // Retain explicit remote values when defined
+            balance: u.balance !== undefined ? u.balance : existing.balance,
+            depositBalance: u.depositBalance !== undefined ? u.depositBalance : existing.depositBalance,
+            whatsappBalance: u.whatsappBalance !== undefined ? u.whatsappBalance : existing.whatsappBalance,
+            isActivated: u.isActivated !== undefined ? u.isActivated : existing.isActivated,
+            tier: u.tier || existing.tier,
+            isAuthorizedPackagePurchased: u.isAuthorizedPackagePurchased ?? existing.isAuthorizedPackagePurchased,
+            isUnlockMpesaPurchased: u.isUnlockMpesaPurchased ?? existing.isUnlockMpesaPurchased,
+            isAutomationPackagePurchased: u.isAutomationPackagePurchased ?? existing.isAutomationPackagePurchased,
+            isVerifiedAgentPurchased: u.isVerifiedAgentPurchased ?? existing.isVerifiedAgentPurchased,
+            isUniversePackagePurchased: u.isUniversePackagePurchased ?? existing.isUniversePackagePurchased,
+          });
+        } else {
+          map.set(u.id, { ...u });
+        }
+      }
+    });
+  }
 
   const merged = Array.from(map.values());
-  // Sort descending by registration date
+  // Sort descending by registration date (newest registered members first)
   merged.sort((a, b) => {
     const timeA = new Date(a.createdAt || 0).getTime();
     const timeB = new Date(b.createdAt || 0).getTime();
@@ -230,3 +240,17 @@ export function mergeUserLists(local: User[], remote: User[]): User[] {
 
   return merged;
 }
+
+/**
+ * Trigger immediate multi-tab sync event
+ */
+export function broadcastUserUpdate(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent('eneza_users_updated', { detail: { timestamp: Date.now() } }));
+    localStorage.setItem('eneza_last_sync_signal', String(Date.now()));
+  } catch (err) {
+    // ignore
+  }
+}
+

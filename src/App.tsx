@@ -60,6 +60,7 @@ import {
   deleteRemoteUser,
   syncAllUsersWithBackend,
   mergeUserLists,
+  broadcastUserUpdate,
 } from './utils/userSync';
 import { getFormattedAccountNumber } from './utils/accountNumber';
 
@@ -317,10 +318,22 @@ export default function App() {
 
     doSync();
 
-    // Background poll every 10 seconds so admin dashboard and clients receive live updates
-    const interval = setInterval(doSync, 10000);
-    return () => clearInterval(interval);
+    // Multi-tab sync listeners
+    const handleSyncEvent = () => {
+      doSync();
+    };
+    window.addEventListener('eneza_users_updated', handleSyncEvent);
+    window.addEventListener('storage', handleSyncEvent);
+
+    // Background poll every 4 seconds so admin dashboard and clients receive live updates
+    const interval = setInterval(doSync, 4000);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('eneza_users_updated', handleSyncEvent);
+      window.removeEventListener('storage', handleSyncEvent);
+    };
   }, []);
+
 
   // Handle Login
   const handleLogin = async (user: User) => {
@@ -426,8 +439,10 @@ export default function App() {
       if (res.allUsers && res.allUsers.length > 0) {
         setUsers((prev) => mergeUserLists(prev, res.allUsers || []));
       }
+      broadcastUserUpdate();
     } catch (err) {
       console.warn('Central registration sync fallback:', err);
+      broadcastUserUpdate();
     }
   };
 

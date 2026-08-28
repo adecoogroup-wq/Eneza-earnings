@@ -3,17 +3,72 @@ import path from 'path';
 import { User } from '../types';
 import { INITIAL_USERS } from '../data/mockData';
 
+// Persistent storage file paths
+const PROJECT_DATA_DIR = path.join(process.cwd(), 'data');
+const PROJECT_FILE_PATH = path.join(PROJECT_DATA_DIR, 'registered_users.json');
 const TMP_FILE_PATH = path.join('/tmp', 'eneza_registered_users.json');
 
-// Global in-memory cache for serverless environments
+// Ensure data directory exists
+try {
+  if (!fs.existsSync(PROJECT_DATA_DIR)) {
+    fs.mkdirSync(PROJECT_DATA_DIR, { recursive: true });
+  }
+} catch (err) {
+  // Non-fatal if filesystem is restricted
+}
+
+// Global in-memory cache for serverless and long-lived node environments
 declare global {
   // eslint-disable-next-line no-var
   var _enezaRegisteredUsers: Map<string, User> | undefined;
 }
 
+function loadUsersFromFile(): User[] {
+  // Try project data file first, then /tmp fallback
+  const candidatePaths = [PROJECT_FILE_PATH, TMP_FILE_PATH];
+  for (const filePath of candidatePaths) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (err) {
+      console.warn(`[UserStore] Error loading users from ${filePath}:`, err);
+    }
+  }
+  return [];
+}
+
+function saveUsersToFile(users: User[]) {
+  if (!Array.isArray(users)) return;
+  const jsonStr = JSON.stringify(users, null, 2);
+
+  // Write to project data file
+  try {
+    if (!fs.existsSync(PROJECT_DATA_DIR)) {
+      fs.mkdirSync(PROJECT_DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(PROJECT_FILE_PATH, jsonStr, 'utf-8');
+  } catch (err) {
+    // Project root may be read-only in some environments, fallback to /tmp
+  }
+
+  // Write to /tmp file
+  try {
+    fs.writeFileSync(TMP_FILE_PATH, jsonStr, 'utf-8');
+  } catch (err) {
+    console.warn('[UserStore] Error saving to /tmp:', err);
+  }
+}
+
+// Initialize global user map on startup with seed users + persisted file users
 if (!globalThis._enezaRegisteredUsers) {
   globalThis._enezaRegisteredUsers = new Map<string, User>();
-  // Seed with initial users
+
+  // 1. Seed initial users
   INITIAL_USERS.forEach((u) => {
     globalThis._enezaRegisteredUsers!.set(u.id, { ...u });
     if (u.phone) {
@@ -21,39 +76,35 @@ if (!globalThis._enezaRegisteredUsers) {
       if (cleanPhone) globalThis._enezaRegisteredUsers!.set(`phone_${cleanPhone}`, { ...u });
     }
   });
-}
 
-function loadUsersFromFile(): User[] {
-  try {
-    if (fs.existsSync(TMP_FILE_PATH)) {
-      const content = fs.readFileSync(TMP_FILE_PATH, 'utf-8');
-      const parsed = JSON.parse(content);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+  // 2. Load and merge saved users from file
+  const savedUsers = loadUsersFromFile();
+  savedUsers.forEach((u) => {
+    if (u && u.id) {
+      const existing = globalThis._enezaRegisteredUsers!.get(u.id);
+      globalThis._enezaRegisteredUsers!.set(u.id, existing ? { ...existing, ...u } : { ...u });
+      if (u.phone) {
+        const cleanPhone = u.phone.replace(/\D/g, '');
+        if (cleanPhone) globalThis._enezaRegisteredUsers!.set(`phone_${cleanPhone}`, u);
       }
     }
-  } catch (err) {
-    console.warn('[UserStore] Error loading from temp file:', err);
-  }
-  return [];
-}
-
-function saveUsersToFile(users: User[]) {
-  try {
-    fs.writeFileSync(TMP_FILE_PATH, JSON.stringify(users, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[UserStore] Error saving to temp file:', err);
-  }
+  });
 }
 
 export function getAllStoredUsers(): User[] {
   const map = globalThis._enezaRegisteredUsers || new Map<string, User>();
   const fileUsers = loadUsersFromFile();
 
-  // Merge file users into map
+  // Merge file users into in-memory map without overwriting newer in-memory updates
   fileUsers.forEach((u) => {
     if (u && u.id) {
-      map.set(u.id, u);
+      const current = map.get(u.id);
+      if (!current) {
+        map.set(u.id, u);
+      } else {
+        // Retain newer timestamp / merged values
+        map.set(u.id, { ...u, ...current });
+      }
     }
   });
 
@@ -65,12 +116,13 @@ export function getAllStoredUsers(): User[] {
   map.forEach((value, key) => {
     if (key.startsWith('phone_')) return;
     if (value && value.id) {
-      userMap.set(value.id, value);
+      const existing = userMap.get(value.id);
+      userMap.set(value.id, existing ? { ...existing, ...value } : value);
     }
   });
 
   const result = Array.from(userMap.values());
-  // Sort descending by registration / creation time
+  // Sort descending by registration / creation time (newest registrations first)
   result.sort((a, b) => {
     const timeA = new Date(a.createdAt || 0).getTime();
     const timeB = new Date(b.createdAt || 0).getTime();
@@ -84,46 +136,50 @@ export function registerOrUpdateUser(user: Partial<User> & { id: string }): User
   const map = globalThis._enezaRegisteredUsers || new Map<string, User>();
   const existing: Partial<User> = map.get(user.id) || {};
 
+  const cleanPhone = user.phone ? user.phone.replace(/\D/g, '') : (existing.phone ? existing.phone.replace(/\D/g, '') : '');
+  const existingByPhone: Partial<User> = cleanPhone ? (map.get(`phone_${cleanPhone}`) || {}) : {};
+
+  const baseUser = { ...existingByPhone, ...existing };
+
   const merged: User = {
-    id: user.id,
-    username: user.username || existing.username || `user_${Date.now()}`,
-    firstName: user.firstName || existing.firstName || 'Member',
-    lastName: user.lastName || existing.lastName || '',
-    phone: user.phone || existing.phone || '',
-    accountNumber: user.accountNumber || existing.accountNumber,
-    email: user.email || existing.email,
-    password: user.password || existing.password || '123456',
-    role: user.role || existing.role || 'user',
-    isActivated: user.isActivated ?? existing.isActivated ?? false,
-    tier: user.tier || existing.tier || 'Standard',
-    balance: Number(user.balance ?? existing.balance ?? 0),
-    depositBalance: Number(user.depositBalance ?? existing.depositBalance ?? 0),
-    pendingBalance: Number(user.pendingBalance ?? existing.pendingBalance ?? 0),
-    totalWithdrawn: Number(user.totalWithdrawn ?? existing.totalWithdrawn ?? 0),
-    totalEarned: Number(user.totalEarned ?? existing.totalEarned ?? 0),
-    referralCode: user.referralCode || existing.referralCode || `EE${Math.floor(1000 + Math.random() * 9000)}`,
-    referredBy: user.referredBy || existing.referredBy || '',
-    spinsRemaining: Number(user.spinsRemaining ?? existing.spinsRemaining ?? 0),
-    tasksCompletedToday: Number(user.tasksCompletedToday ?? existing.tasksCompletedToday ?? 0),
-    maxTasksPerDay: Number(user.maxTasksPerDay ?? existing.maxTasksPerDay ?? 5),
-    whatsappBalance: Number(user.whatsappBalance ?? existing.whatsappBalance ?? user.balance ?? 0),
-    pendingCashbackTotal: Number(user.pendingCashbackTotal ?? existing.pendingCashbackTotal ?? 0),
-    activeWhatsAppPackage: user.activeWhatsAppPackage || existing.activeWhatsAppPackage,
-    isAuthorizedPackagePurchased: Boolean(user.isAuthorizedPackagePurchased ?? existing.isAuthorizedPackagePurchased),
-    isUnlockMpesaPurchased: Boolean(user.isUnlockMpesaPurchased ?? existing.isUnlockMpesaPurchased),
-    isAutomationPackagePurchased: Boolean(user.isAutomationPackagePurchased ?? existing.isAutomationPackagePurchased),
-    isVerifiedAgentPurchased: Boolean(user.isVerifiedAgentPurchased ?? existing.isVerifiedAgentPurchased),
-    isUniversePackagePurchased: Boolean(user.isUniversePackagePurchased ?? existing.isUniversePackagePurchased),
-    createdAt: user.createdAt || existing.createdAt || new Date().toISOString(),
+    id: user.id || baseUser.id || `usr_${Date.now()}`,
+    username: user.username || baseUser.username || `user_${Date.now()}`,
+    firstName: user.firstName || baseUser.firstName || 'Member',
+    lastName: user.lastName || baseUser.lastName || '',
+    phone: user.phone || baseUser.phone || '',
+    accountNumber: user.accountNumber || baseUser.accountNumber,
+    email: user.email || baseUser.email,
+    password: user.password || baseUser.password || '123456',
+    role: user.role || baseUser.role || 'user',
+    isActivated: user.isActivated ?? baseUser.isActivated ?? false,
+    tier: user.tier || baseUser.tier || 'Standard',
+    balance: Number(user.balance ?? baseUser.balance ?? 0),
+    depositBalance: Number(user.depositBalance ?? baseUser.depositBalance ?? 0),
+    pendingBalance: Number(user.pendingBalance ?? baseUser.pendingBalance ?? 0),
+    totalWithdrawn: Number(user.totalWithdrawn ?? baseUser.totalWithdrawn ?? 0),
+    totalEarned: Number(user.totalEarned ?? baseUser.totalEarned ?? 0),
+    referralCode: user.referralCode || baseUser.referralCode || `EE${Math.floor(1000 + Math.random() * 9000)}`,
+    referredBy: user.referredBy || baseUser.referredBy || '',
+    spinsRemaining: Number(user.spinsRemaining ?? baseUser.spinsRemaining ?? 1),
+    tasksCompletedToday: Number(user.tasksCompletedToday ?? baseUser.tasksCompletedToday ?? 0),
+    maxTasksPerDay: Number(user.maxTasksPerDay ?? baseUser.maxTasksPerDay ?? 5),
+    whatsappBalance: Number(user.whatsappBalance ?? baseUser.whatsappBalance ?? (user.balance !== undefined ? user.balance : baseUser.balance) ?? 0),
+    pendingCashbackTotal: Number(user.pendingCashbackTotal ?? baseUser.pendingCashbackTotal ?? 0),
+    activeWhatsAppPackage: user.activeWhatsAppPackage || baseUser.activeWhatsAppPackage,
+    isAuthorizedPackagePurchased: Boolean(user.isAuthorizedPackagePurchased ?? baseUser.isAuthorizedPackagePurchased),
+    isUnlockMpesaPurchased: Boolean(user.isUnlockMpesaPurchased ?? baseUser.isUnlockMpesaPurchased),
+    isAutomationPackagePurchased: Boolean(user.isAutomationPackagePurchased ?? baseUser.isAutomationPackagePurchased),
+    isVerifiedAgentPurchased: Boolean(user.isVerifiedAgentPurchased ?? baseUser.isVerifiedAgentPurchased),
+    isUniversePackagePurchased: Boolean(user.isUniversePackagePurchased ?? baseUser.isUniversePackagePurchased),
+    createdAt: user.createdAt || baseUser.createdAt || new Date().toISOString(),
   };
 
   map.set(merged.id, merged);
-  if (merged.phone) {
-    const cleanPhone = merged.phone.replace(/\D/g, '');
-    if (cleanPhone) map.set(`phone_${cleanPhone}`, merged);
+  if (cleanPhone) {
+    map.set(`phone_${cleanPhone}`, merged);
   }
 
-  // Persist to file
+  // Persist all users to disk
   const all = getAllStoredUsers();
   saveUsersToFile(all);
 
@@ -160,3 +216,4 @@ export function batchSyncUsers(usersToSync: User[]): User[] {
 
   return getAllStoredUsers();
 }
+
