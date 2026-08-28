@@ -157,52 +157,62 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
       return isPhoneDup;
     });
 
-    if (existing) {
-      setSignUpError('An account with this phone number is already registered. Please sign in instead.');
-      return;
-    }
-
     const nameParts = fullName.trim().split(' ');
     const first = nameParts[0] || 'Member';
     const last = nameParts.slice(1).join(' ') || '';
     const generatedUsername = first.toLowerCase().replace(/[^a-z0-9]/g, '') + Math.floor(100 + Math.random() * 900);
     const effectiveReferral = (referralInput || getCapturedReferralCode() || '').trim().toUpperCase();
 
-    const newUser: User = {
-      id: `usr_${Date.now()}`,
-      username: generatedUsername,
-      firstName: first,
-      lastName: last,
-      phone: phone.trim(),
-      accountNumber: generateNewAccountNumber(phone),
-      email: email.trim() || `${generatedUsername}@enezaearnings.ke`,
-      password: signupPassword,
-      role: 'user',
-      isActivated: false,
-      tier: 'Standard',
-      balance: 0,
-      depositBalance: 0,
-      pendingBalance: 0,
-      totalWithdrawn: 0,
-      totalEarned: 0,
-      referralCode: `EE${Math.floor(1000 + Math.random() * 9000)}`,
-      referredBy: effectiveReferral || undefined,
-      spinsRemaining: 1, // Welcome 1 spin bonus
-      tasksCompletedToday: 0,
-      maxTasksPerDay: 5,
-      whatsappBalance: 0,
-      pendingCashbackTotal: 0,
-      isAuthorizedPackagePurchased: false,
-      isUnlockMpesaPurchased: false,
-      isAutomationPackagePurchased: false,
-      isVerifiedAgentPurchased: false,
-      isUniversePackagePurchased: false,
-      createdAt: new Date().toISOString(),
-    };
+    let userToSave: User;
+
+    if (existing) {
+      // Update existing account credentials and profile info
+      userToSave = {
+        ...existing,
+        firstName: first || existing.firstName,
+        lastName: last || existing.lastName,
+        phone: phone.trim(),
+        email: email.trim() || existing.email || `${existing.username || generatedUsername}@enezaearnings.ke`,
+        password: signupPassword || existing.password,
+        referredBy: effectiveReferral || existing.referredBy,
+      };
+    } else {
+      userToSave = {
+        id: `usr_${Date.now()}`,
+        username: generatedUsername,
+        firstName: first,
+        lastName: last,
+        phone: phone.trim(),
+        accountNumber: generateNewAccountNumber(phone),
+        email: email.trim() || `${generatedUsername}@enezaearnings.ke`,
+        password: signupPassword,
+        role: 'user',
+        isActivated: false,
+        tier: 'Standard',
+        balance: 0,
+        depositBalance: 0,
+        pendingBalance: 0,
+        totalWithdrawn: 0,
+        totalEarned: 0,
+        referralCode: `EE${Math.floor(1000 + Math.random() * 9000)}`,
+        referredBy: effectiveReferral || undefined,
+        spinsRemaining: 1, // Welcome 1 spin bonus
+        tasksCompletedToday: 0,
+        maxTasksPerDay: 5,
+        whatsappBalance: 0,
+        pendingCashbackTotal: 0,
+        isAuthorizedPackagePurchased: false,
+        isUnlockMpesaPurchased: false,
+        isAutomationPackagePurchased: false,
+        isVerifiedAgentPurchased: false,
+        isUniversePackagePurchased: false,
+        createdAt: new Date().toISOString(),
+      };
+    }
 
     clearCapturedReferralCode();
-    onRegister(newUser);
-    onLogin(newUser);
+    onRegister(userToSave);
+    onLogin(userToSave);
   };
 
   return (
