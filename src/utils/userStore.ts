@@ -102,8 +102,12 @@ export function getAllStoredUsers(): User[] {
       if (!current) {
         map.set(u.id, u);
       } else {
-        // Retain newer timestamp / merged values
-        map.set(u.id, { ...u, ...current });
+        // Retain file persisted values merged with in-memory updates
+        map.set(u.id, { ...current, ...u });
+      }
+      if (u.phone) {
+        const cleanPhone = u.phone.replace(/\D/g, '');
+        if (cleanPhone) map.set(`phone_${cleanPhone}`, u);
       }
     }
   });
@@ -163,7 +167,11 @@ export function registerOrUpdateUser(user: Partial<User> & { id: string }): User
     spinsRemaining: Number(user.spinsRemaining ?? baseUser.spinsRemaining ?? 1),
     tasksCompletedToday: Number(user.tasksCompletedToday ?? baseUser.tasksCompletedToday ?? 0),
     maxTasksPerDay: Number(user.maxTasksPerDay ?? baseUser.maxTasksPerDay ?? 5),
-    whatsappBalance: Number(user.whatsappBalance ?? baseUser.whatsappBalance ?? (user.balance !== undefined ? user.balance : baseUser.balance) ?? 0),
+    whatsappBalance: user.whatsappBalance !== undefined
+      ? Number(user.whatsappBalance)
+      : baseUser.whatsappBalance !== undefined
+      ? Number(baseUser.whatsappBalance)
+      : Number(user.balance !== undefined ? user.balance : (baseUser.balance ?? 0)),
     pendingCashbackTotal: Number(user.pendingCashbackTotal ?? baseUser.pendingCashbackTotal ?? 0),
     activeWhatsAppPackage: user.activeWhatsAppPackage || baseUser.activeWhatsAppPackage,
     isAuthorizedPackagePurchased: Boolean(user.isAuthorizedPackagePurchased ?? baseUser.isAuthorizedPackagePurchased),

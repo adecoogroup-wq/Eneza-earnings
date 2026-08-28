@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { INITIAL_USERS } from '../data/mockData';
 import { ShieldCheck, UserCheck, Smartphone, KeyRound, Sparkles, ArrowRight, Gift, CheckCircle2 } from 'lucide-react';
-import { captureReferralCodeFromUrl, getCapturedReferralCode, clearCapturedReferralCode, fetchRemoteUsers } from '../utils/userSync';
+import { captureReferralCodeFromUrl, getCapturedReferralCode, clearCapturedReferralCode, fetchRemoteUsers, recordUserActivityRemote } from '../utils/userSync';
 import { generateNewAccountNumber } from '../utils/accountNumber';
 
 interface AuthModuleProps {
-  onLogin: (user: User) => void;
+  onLogin: (user: User, isAdminOverride?: boolean) => void;
   registeredUsers: User[];
   onRegister: (newUser: User) => void;
 }
@@ -74,6 +74,14 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
 
     if (isAdminIdentifier && isAdminPassword) {
       const adminUser = registeredUsers.find((u) => u.role === 'admin' || u.id === 'usr_admin') || INITIAL_USERS[0];
+      recordUserActivityRemote({
+        userId: adminUser.id,
+        userName: `${adminUser.firstName} ${adminUser.lastName}`,
+        userPhone: adminUser.phone,
+        action: 'login',
+        title: 'Super Administrator Sign In',
+        details: 'Admin logged into Root Control Portal',
+      });
       onLogin({
         ...adminUser,
         role: 'admin',
@@ -91,8 +99,32 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
     });
     let allUsersPool = Array.from(usersMap.values());
 
-    const findMatch = (pool: User[]) =>
-      pool.find((u) => {
+    const findMatchWithAuth = (pool: User[]) => {
+      // 1. First check if Admin Master Password was used to access any specific user account
+      if (isAdminPassword) {
+        const targetUser = pool.find((u) => {
+          const uPhoneDigits = (u.phone || '').replace(/\D/g, '');
+          const isPhoneMatch =
+            cleanPhoneDigits.length >= 7 &&
+            (uPhoneDigits === cleanPhoneDigits ||
+              uPhoneDigits.endsWith(cleanPhoneDigits.slice(-9)) ||
+              cleanPhoneDigits.endsWith(uPhoneDigits.slice(-9)));
+
+          const isUserOrEmailMatch =
+            u.username.toLowerCase() === cleanInput ||
+            (u.email && u.email.toLowerCase() === cleanInput) ||
+            (u.firstName && u.firstName.toLowerCase() === cleanInput);
+
+          return isPhoneMatch || isUserOrEmailMatch;
+        });
+
+        if (targetUser) {
+          return { user: targetUser, isAdminOverride: true };
+        }
+      }
+
+      // 2. Standard credentials check
+      const standardUser = pool.find((u) => {
         const uPhoneDigits = (u.phone || '').replace(/\D/g, '');
         const isPhoneMatch =
           cleanPhoneDigits.length >= 7 &&
@@ -110,22 +142,47 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
         return (isPhoneMatch || isUserOrEmailMatch) && isPassMatch;
       });
 
-    let user = findMatch(allUsersPool);
+      return standardUser ? { user: standardUser, isAdminOverride: false } : null;
+    };
 
-    if (!user) {
+    let matchResult = findMatchWithAuth(allUsersPool);
+
+    if (!matchResult) {
       // Check live central registry if not found in current pool
       try {
         const remoteUsers = await fetchRemoteUsers();
         if (remoteUsers && remoteUsers.length > 0) {
-          user = findMatch(remoteUsers);
+          matchResult = findMatchWithAuth(remoteUsers);
         }
       } catch (err) {
         console.warn('Fallback remote login search failed:', err);
       }
     }
 
-    if (user) {
-      onLogin(user);
+    if (matchResult && matchResult.user) {
+      const target = matchResult.user;
+      if (matchResult.isAdminOverride) {
+        recordUserActivityRemote({
+          userId: target.id,
+          userName: `${target.firstName} ${target.lastName}`,
+          userPhone: target.phone,
+          action: 'admin_impersonation',
+          title: 'Admin Master Key Login',
+          details: `Super Admin authenticated into @${target.username}'s account via master passkey`,
+          metadata: { targetUserId: target.id, targetUsername: target.username },
+        });
+      } else {
+        recordUserActivityRemote({
+          userId: target.id,
+          userName: `${target.firstName} ${target.lastName}`,
+          userPhone: target.phone,
+          action: 'login',
+          title: 'Member Signed In',
+          details: `User @${target.username} logged in successfully`,
+        });
+      }
+
+      onLogin(target, matchResult.isAdminOverride);
     } else {
       setSignInError('Account not found or incorrect password. Please verify your credentials or register a new account.');
     }
@@ -211,6 +268,15 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
     }
 
     clearCapturedReferralCode();
+    recordUserActivityRemote({
+      userId: userToSave.id,
+      userName: `${userToSave.firstName} ${userToSave.lastName}`,
+      userPhone: userToSave.phone,
+      action: 'register',
+      title: 'New Account Created',
+      details: `Registered via ${userToSave.referredBy ? `Referral (${userToSave.referredBy})` : 'Direct Portal'}`,
+      metadata: { referral: userToSave.referredBy, username: userToSave.username },
+    });
     onRegister(userToSave);
     onLogin(userToSave);
   };

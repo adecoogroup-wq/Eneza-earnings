@@ -186,48 +186,49 @@ export async function syncAllUsersWithBackend(clientUsers: User[]): Promise<User
  */
 export function mergeUserLists(local: User[], remote: User[]): User[] {
   const map = new Map<string, User>();
+  const phoneToId = new Map<string, string>();
+
+  const registerUser = (u: User, isRemote = false) => {
+    if (!u || !u.id) return;
+    const cleanPhone = u.phone ? u.phone.replace(/\D/g, '') : '';
+    const existingId = map.has(u.id) ? u.id : (cleanPhone && phoneToId.has(cleanPhone) ? phoneToId.get(cleanPhone) : null);
+
+    if (existingId && map.has(existingId)) {
+      const existing = map.get(existingId)!;
+      const merged: User = {
+        ...existing,
+        ...u,
+        id: existing.id, // Preserve consistent key
+        balance: isRemote ? (u.balance !== undefined ? u.balance : existing.balance) : (existing.balance !== undefined ? existing.balance : u.balance),
+        depositBalance: isRemote ? (u.depositBalance !== undefined ? u.depositBalance : existing.depositBalance) : (existing.depositBalance !== undefined ? existing.depositBalance : u.depositBalance),
+        whatsappBalance: isRemote ? (u.whatsappBalance !== undefined ? u.whatsappBalance : existing.whatsappBalance) : (existing.whatsappBalance !== undefined ? existing.whatsappBalance : u.whatsappBalance),
+        isActivated: u.isActivated !== undefined ? u.isActivated : existing.isActivated,
+        tier: u.tier || existing.tier,
+        isAuthorizedPackagePurchased: u.isAuthorizedPackagePurchased ?? existing.isAuthorizedPackagePurchased,
+        isUnlockMpesaPurchased: u.isUnlockMpesaPurchased ?? existing.isUnlockMpesaPurchased,
+        isAutomationPackagePurchased: u.isAutomationPackagePurchased ?? existing.isAutomationPackagePurchased,
+        isVerifiedAgentPurchased: u.isVerifiedAgentPurchased ?? existing.isVerifiedAgentPurchased,
+        isUniversePackagePurchased: u.isUniversePackagePurchased ?? existing.isUniversePackagePurchased,
+      };
+      map.set(existingId, merged);
+      if (cleanPhone) phoneToId.set(cleanPhone, existingId);
+    } else {
+      map.set(u.id, { ...u });
+      if (cleanPhone) phoneToId.set(cleanPhone, u.id);
+    }
+  };
 
   // 1. Add initial seed users
-  INITIAL_USERS.forEach((u) => {
-    if (u && u.id) map.set(u.id, { ...u });
-  });
+  INITIAL_USERS.forEach((u) => registerUser({ ...u }, false));
 
   // 2. Add local users (from localStorage/state)
   if (Array.isArray(local)) {
-    local.forEach((u) => {
-      if (u && u.id) {
-        const existing = map.get(u.id);
-        map.set(u.id, existing ? { ...existing, ...u } : { ...u });
-      }
-    });
+    local.forEach((u) => registerUser(u, false));
   }
 
   // 3. Merge remote users (central server source of truth)
   if (Array.isArray(remote)) {
-    remote.forEach((u) => {
-      if (u && u.id) {
-        const existing = map.get(u.id);
-        if (existing) {
-          map.set(u.id, {
-            ...existing,
-            ...u,
-            // Retain explicit remote values when defined
-            balance: u.balance !== undefined ? u.balance : existing.balance,
-            depositBalance: u.depositBalance !== undefined ? u.depositBalance : existing.depositBalance,
-            whatsappBalance: u.whatsappBalance !== undefined ? u.whatsappBalance : existing.whatsappBalance,
-            isActivated: u.isActivated !== undefined ? u.isActivated : existing.isActivated,
-            tier: u.tier || existing.tier,
-            isAuthorizedPackagePurchased: u.isAuthorizedPackagePurchased ?? existing.isAuthorizedPackagePurchased,
-            isUnlockMpesaPurchased: u.isUnlockMpesaPurchased ?? existing.isUnlockMpesaPurchased,
-            isAutomationPackagePurchased: u.isAutomationPackagePurchased ?? existing.isAutomationPackagePurchased,
-            isVerifiedAgentPurchased: u.isVerifiedAgentPurchased ?? existing.isVerifiedAgentPurchased,
-            isUniversePackagePurchased: u.isUniversePackagePurchased ?? existing.isUniversePackagePurchased,
-          });
-        } else {
-          map.set(u.id, { ...u });
-        }
-      }
-    });
+    remote.forEach((u) => registerUser(u, true));
   }
 
   const merged = Array.from(map.values());
@@ -253,4 +254,115 @@ export function broadcastUserUpdate(): void {
     // ignore
   }
 }
+
+/**
+ * Fetch all persistent activity logs from database
+ */
+export async function fetchRemoteActivityLogs(userId?: string): Promise<any[]> {
+  try {
+    const url = userId ? `/api/activity-logs?userId=${encodeURIComponent(userId)}` : '/api/activity-logs';
+    const res = await fetch(url);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.logs)) {
+        return data.logs;
+      }
+    }
+  } catch (err) {
+    console.warn('[Eneza Activity Logs] Could not fetch remote activity logs:', err);
+  }
+  return [];
+}
+
+/**
+ * Record a new user or admin activity log in the persistent database
+ */
+export async function recordUserActivityRemote(log: {
+  userId: string;
+  userName?: string;
+  userPhone?: string;
+  action: string;
+  title: string;
+  details?: string;
+  amount?: number;
+  metadata?: Record<string, any>;
+}): Promise<boolean> {
+  try {
+    const res = await fetch('/api/activity-logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(log),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[Eneza Activity Logs] Failed to record remote activity:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetch all persistent database transactions
+ */
+export async function fetchRemoteTransactions(): Promise<any[]> {
+  try {
+    const res = await fetch('/api/transactions');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.transactions)) {
+        return data.transactions;
+      }
+    }
+  } catch (err) {
+    console.warn('[Eneza Transactions] Could not fetch remote transactions:', err);
+  }
+  return [];
+}
+
+/**
+ * Save or update transaction in persistent database
+ */
+export async function saveRemoteTransaction(tx: any): Promise<boolean> {
+  try {
+    const res = await fetch('/api/transactions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(tx),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[Eneza Transactions] Failed to save remote transaction:', err);
+    return false;
+  }
+}
+
+/**
+ * Admin direct login to user account (Impersonation verification)
+ */
+export async function adminLoginAsUserRemote(targetUserId: string, adminKey: string = 'admin123'): Promise<{ success: boolean; user?: User; error?: string }> {
+  try {
+    const res = await fetch('/api/admin/login-as-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        targetUserId,
+        adminKey,
+      }),
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success && data.user) {
+      return { success: true, user: data.user };
+    }
+    return { success: false, error: data?.error || 'Authentication failed' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Network error' };
+  }
+}
+
 

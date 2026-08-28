@@ -39,6 +39,37 @@ export interface User {
 
 export type TaskCategory = 'video' | 'trivia' | 'survey' | 'social' | 'captcha' | 'review';
 
+export type ActivityAction =
+  | 'login'
+  | 'register'
+  | 'spin_wheel'
+  | 'task_complete'
+  | 'whatsapp_earn'
+  | 'deposit'
+  | 'withdrawal_request'
+  | 'withdrawal_approved'
+  | 'withdrawal_rejected'
+  | 'package_purchase'
+  | 'tier_upgrade'
+  | 'cashback_claim'
+  | 'profile_update'
+  | 'admin_impersonation'
+  | 'admin_adjustment';
+
+export interface UserActivityLog {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhone: string;
+  action: ActivityAction;
+  title: string;
+  details: string;
+  amount?: number;
+  metadata?: Record<string, any>;
+  ipAddress?: string;
+  timestamp: string;
+}
+
 export interface EarningTask {
   id: string;
   title: string;

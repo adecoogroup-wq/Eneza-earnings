@@ -86,7 +86,9 @@ export default function App() {
   const normalizeUser = (u: any): User => {
     if (!u) return INITIAL_USERS[0];
     const bal = Number(u.balance || 0);
-    const waBal = typeof u.whatsappBalance === 'number' && u.whatsappBalance > 0 ? u.whatsappBalance : (u.whatsappBalance !== undefined ? Number(u.whatsappBalance) : bal);
+    const waBal = typeof u.whatsappBalance === 'number' && !isNaN(u.whatsappBalance)
+      ? Number(u.whatsappBalance)
+      : (u.whatsappBalance !== undefined && !isNaN(Number(u.whatsappBalance)) ? Number(u.whatsappBalance) : bal);
     return {
       id: u.id || `usr_${Date.now()}`,
       username: u.username || 'user',
@@ -291,22 +293,25 @@ export default function App() {
             const fresh = remote.find(
               (r) =>
                 r.id === curr.id ||
-                (r.phone && curr.phone && r.phone.replace(/\D/g, '') === curr.phone.replace(/\D/g, ''))
+                (r.phone && curr.phone && r.phone.replace(/\D/g, '') === curr.phone.replace(/\D/g, '')) ||
+                (r.username && curr.username && r.username.toLowerCase() === curr.username.toLowerCase())
             );
             if (fresh) {
-              return {
+              const updated = normalizeUser({
                 ...curr,
                 ...fresh,
                 balance: fresh.balance !== undefined ? fresh.balance : curr.balance,
                 whatsappBalance:
                   fresh.whatsappBalance !== undefined
                     ? fresh.whatsappBalance
-                    : (fresh.balance ?? curr.whatsappBalance),
+                    : (curr.whatsappBalance !== undefined ? curr.whatsappBalance : fresh.balance),
                 depositBalance:
                   fresh.depositBalance !== undefined ? fresh.depositBalance : curr.depositBalance,
                 isActivated: fresh.isActivated ?? curr.isActivated,
                 tier: fresh.tier || curr.tier,
-              };
+              });
+              setStored('current_user', updated);
+              return updated;
             }
             return curr;
           });
@@ -372,7 +377,7 @@ export default function App() {
             whatsappBalance:
               remoteMatch.whatsappBalance !== undefined
                 ? remoteMatch.whatsappBalance
-                : (remoteMatch.balance ?? normalized.whatsappBalance),
+                : (normalized.whatsappBalance !== undefined ? normalized.whatsappBalance : remoteMatch.balance),
             depositBalance:
               remoteMatch.depositBalance !== undefined
                 ? remoteMatch.depositBalance
@@ -380,7 +385,7 @@ export default function App() {
           });
           setCurrentUser(fresh);
           setStored('current_user', fresh);
-          setUsers((prev) => prev.map((u) => (u.id === fresh.id ? fresh : u)));
+          setUsers((prev) => prev.map((u) => (u.id === fresh.id || (u.phone && fresh.phone && u.phone.replace(/\D/g, '') === fresh.phone.replace(/\D/g, '')) ? fresh : u)));
         }
       }
     } catch (err) {
@@ -1564,7 +1569,7 @@ export default function App() {
       prev.map((u) => {
         if (u.id === userId) {
           const newBal = Math.max(0, (u.balance || 0) + deltaAmount);
-          const newWaBal = Math.max(0, (u.whatsappBalance || u.balance || 0) + deltaAmount);
+          const newWaBal = Math.max(0, (u.whatsappBalance !== undefined ? u.whatsappBalance : (u.balance || 0)) + deltaAmount);
           const updated = {
             ...u,
             balance: newBal,
@@ -1572,7 +1577,7 @@ export default function App() {
             totalEarned: deltaAmount > 0 ? (u.totalEarned || 0) + deltaAmount : (u.totalEarned || 0),
           };
           updatedUserTarget = updated;
-          if (currentUser?.id === userId) {
+          if (currentUser?.id === userId || (currentUser?.phone && u.phone && currentUser.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))) {
             setCurrentUser(updated);
             setStored('current_user', updated);
           }
@@ -1585,6 +1590,7 @@ export default function App() {
     if (updatedUserTarget) {
       try {
         await updateRemoteUser(updatedUserTarget);
+        broadcastUserUpdate();
       } catch (err) {
         console.warn('Central registry balance sync fallback:', err);
       }
@@ -1634,7 +1640,7 @@ export default function App() {
             totalEarned: earnedBonus > 0 ? (u.totalEarned || 0) + earnedBonus : (u.totalEarned || 0),
           };
           updatedUserTarget = updated;
-          if (currentUser?.id === userId) {
+          if (currentUser?.id === userId || (currentUser?.phone && u.phone && currentUser.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))) {
             setCurrentUser(updated);
             setStored('current_user', updated);
           }
@@ -1647,6 +1653,7 @@ export default function App() {
     if (updatedUserTarget) {
       try {
         await updateRemoteUser(updatedUserTarget);
+        broadcastUserUpdate();
       } catch (err) {
         console.warn('Central registry balance sync fallback:', err);
       }
@@ -1655,28 +1662,48 @@ export default function App() {
 
   const handleAdminUpdateUserDetails = async (userId: string, updatedFields: Partial<User>) => {
     let updatedUserTarget: User | null = null;
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
+    setUsers((prev) => {
+      const cleanPhone = updatedFields.phone ? updatedFields.phone.replace(/\D/g, '') : '';
+      const exists = prev.some(
+        (u) =>
+          u.id === userId ||
+          (cleanPhone && u.phone && u.phone.replace(/\D/g, '') === cleanPhone)
+      );
+
+      if (!exists) {
+        const newUser = normalizeUser({ id: userId, ...updatedFields });
+        updatedUserTarget = newUser;
+        return [newUser, ...prev];
+      }
+
+      return prev.map((u) => {
+        if (
+          u.id === userId ||
+          (cleanPhone && u.phone && u.phone.replace(/\D/g, '') === cleanPhone)
+        ) {
           const updated = normalizeUser({
             ...u,
             ...updatedFields,
             id: u.id,
           });
           updatedUserTarget = updated;
-          if (currentUser?.id === userId) {
+          if (
+            currentUser?.id === u.id ||
+            (currentUser?.phone && u.phone && currentUser.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))
+          ) {
             setCurrentUser(updated);
             setStored('current_user', updated);
           }
           return updated;
         }
         return u;
-      })
-    );
+      });
+    });
 
     if (updatedUserTarget) {
       try {
         await updateRemoteUser(updatedUserTarget);
+        broadcastUserUpdate();
       } catch (err) {
         console.warn('Central registry user update error:', err);
       }
@@ -1693,6 +1720,7 @@ export default function App() {
 
     try {
       await deleteRemoteUser(userId);
+      broadcastUserUpdate();
     } catch (err) {
       console.warn('Central registry user delete error:', err);
     }
@@ -1705,7 +1733,7 @@ export default function App() {
         if (u.id === userId) {
           const updated = { ...u, tier: newTier };
           updatedUserTarget = updated;
-          if (currentUser?.id === userId) {
+          if (currentUser?.id === userId || (currentUser?.phone && u.phone && currentUser.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))) {
             setCurrentUser(updated);
             setStored('current_user', updated);
           }
@@ -1718,6 +1746,7 @@ export default function App() {
     if (updatedUserTarget) {
       try {
         await updateRemoteUser(updatedUserTarget);
+        broadcastUserUpdate();
       } catch (err) {
         console.warn('Central registry tier sync fallback:', err);
       }

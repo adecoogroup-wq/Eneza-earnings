@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { User, Transaction, EarningTask, TierLevel, PayHeroConfig, DailyProductItem } from '../types';
+import { User, Transaction, EarningTask, TierLevel, PayHeroConfig, DailyProductItem, UserActivityLog } from '../types';
 import { INITIAL_PAYHERO_CONFIG, DAILY_PRODUCTS_CATALOG } from '../data/mockData';
 import { safeFormatDateTime } from '../utils/dateUtils';
 import { validateSafaricomPhone } from '../utils/phoneValidation';
 import { SponsoredProductFlyer } from './SponsoredProductFlyer';
 import { getFormattedAccountNumber } from '../utils/accountNumber';
+import { fetchRemoteActivityLogs } from '../utils/userSync';
 import {
   ShieldAlert,
   Users,
@@ -47,6 +48,11 @@ import {
   Mail,
   Smartphone,
   Tag,
+  Database,
+  FileSpreadsheet,
+  History,
+  LogIn,
+  Filter,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -73,6 +79,7 @@ interface AdminDashboardProps {
   onUpdateUserTier: (userId: string, newTier: TierLevel) => void;
   onCreateTask: (newTask: EarningTask) => void;
   onSendBroadcastNotification: (title: string, message: string) => void;
+  onImpersonateUser?: (user: User) => void;
   payheroConfig?: PayHeroConfig;
   onUpdatePayheroConfig?: (config: PayHeroConfig) => void;
   onSyncMembers?: () => Promise<number>;
@@ -91,6 +98,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onUpdateUserTier,
   onCreateTask,
   onSendBroadcastNotification,
+  onImpersonateUser,
   payheroConfig = INITIAL_PAYHERO_CONFIG,
   onUpdatePayheroConfig,
   onSyncMembers,
@@ -98,6 +106,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [adminTab, setAdminTab] = useState<'overview' | 'withdrawals' | 'payhero' | 'users' | 'activity' | 'tasks' | 'products' | 'broadcast'>('overview');
   const [isSyncingMembers, setIsSyncingMembers] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  // Activity Logs & Database State
+  const [activityLogs, setActivityLogs] = useState<UserActivityLog[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [activityActionFilter, setActivityActionFilter] = useState<string>('all');
+  const [activitySearchQuery, setActivitySearchQuery] = useState<string>('');
+  const [selectedActivityDetail, setSelectedActivityDetail] = useState<UserActivityLog | null>(null);
+
+  const loadActivityLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const logs = await fetchRemoteActivityLogs();
+      if (logs && Array.isArray(logs)) {
+        setActivityLogs(logs);
+      }
+    } catch (err) {
+      console.warn('Error loading activity logs:', err);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    loadActivityLogs();
+    const interval = setInterval(loadActivityLogs, 6000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const filteredActivityLogs = activityLogs.filter((log) => {
+    if (activityActionFilter !== 'all') {
+      if (activityActionFilter === 'login' && !log.action.includes('login') && !log.action.includes('auth')) return false;
+      if (activityActionFilter === 'register' && !log.action.includes('register')) return false;
+      if (activityActionFilter === 'whatsapp' && !log.action.includes('whatsapp')) return false;
+      if (activityActionFilter === 'spin' && !log.action.includes('spin')) return false;
+      if (activityActionFilter === 'task' && !log.action.includes('task')) return false;
+      if (activityActionFilter === 'deposit' && !log.action.includes('deposit')) return false;
+      if (activityActionFilter === 'withdrawal' && !log.action.includes('withdrawal')) return false;
+      if (activityActionFilter === 'admin' && !log.action.includes('admin')) return false;
+    }
+    if (activitySearchQuery.trim()) {
+      const q = activitySearchQuery.toLowerCase();
+      const matchName = (log.userName || '').toLowerCase().includes(q);
+      const matchPhone = (log.userPhone || '').toLowerCase().includes(q);
+      const matchDetails = (log.details || '').toLowerCase().includes(q);
+      const matchAction = (log.action || '').toLowerCase().includes(q);
+      if (!matchName && !matchPhone && !matchDetails && !matchAction) return false;
+    }
+    return true;
+  });
 
   const handleTriggerSync = async () => {
     if (!onSyncMembers) return;
@@ -499,17 +556,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {u.createdAt ? safeFormatDateTime(u.createdAt) : 'Recent'}
                       </td>
                       <td className="py-2.5 text-right">
-                        <button
-                          onClick={() => {
-                            setBalanceTargetUser(u);
-                            setAdjustAmount(500);
-                            setBalanceCategory('whatsapp');
-                            setBalanceMode('delta');
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition flex items-center gap-1 ml-auto cursor-pointer"
-                        >
-                          <Coins className="w-3 h-3" /> Add Funds
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5 ml-auto">
+                          {onImpersonateUser && (
+                            <button
+                              onClick={() => onImpersonateUser(u)}
+                              title={`Log in as ${u.firstName}`}
+                              className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Key className="w-3 h-3 text-amber-400" />
+                              <span className="hidden sm:inline">Login As</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setBalanceTargetUser(u);
+                              setAdjustAmount(500);
+                              setBalanceCategory('whatsapp');
+                              setBalanceMode('delta');
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                          >
+                            <Coins className="w-3 h-3" /> Add Funds
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1310,6 +1379,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </td>
                       <td className="py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Login / Impersonate as User */}
+                          {onImpersonateUser && (
+                            <button
+                              onClick={() => onImpersonateUser(u)}
+                              title={`Directly login as @${u.username} (${u.firstName} ${u.lastName})`}
+                              className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-[11px] font-bold transition cursor-pointer flex items-center gap-1 shadow-sm"
+                            >
+                              <Key className="w-3 h-3 text-amber-400" />
+                              <span>Login as User</span>
+                            </button>
+                          )}
+
                           {/* View Profile */}
                           <button
                             onClick={() => setInspectingUser(u)}
@@ -1931,21 +2012,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
-                    <button
-                      type="button"
-                      onClick={() => setEditingUser(null)}
-                      className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-1.5 shadow-lg shadow-indigo-950/50 cursor-pointer"
-                    >
-                      <Save className="w-4 h-4" />
-                      <span>Save All Changes</span>
-                    </button>
+                  <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+                    <div>
+                      {onImpersonateUser && editingUser && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = editingUser;
+                            setEditingUser(null);
+                            onImpersonateUser(target);
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Key className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Login As This Member</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingUser(null)}
+                        className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-1.5 shadow-lg shadow-indigo-950/50 cursor-pointer"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>Save All Changes</span>
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>
@@ -2157,8 +2256,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-2 flex items-center justify-between border-t border-zinc-800">
-                  <div className="flex items-center gap-2">
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-zinc-800">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {onImpersonateUser && (
+                      <button
+                        onClick={() => {
+                          const target = inspectingUser;
+                          setInspectingUser(null);
+                          onImpersonateUser(target);
+                        }}
+                        className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-black flex items-center gap-1.5 shadow-md shadow-amber-950/40 cursor-pointer"
+                      >
+                        <Key className="w-3.5 h-3.5" />
+                        <span>Login as User</span>
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         const target = inspectingUser;
@@ -2192,7 +2304,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <button
                     onClick={() => setInspectingUser(null)}
-                    className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold cursor-pointer w-full sm:w-auto"
                   >
                     Close Profile
                   </button>

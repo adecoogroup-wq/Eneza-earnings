@@ -140,11 +140,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const displayName = user?.firstName || user?.username || 'Chris';
   const eeAccountNumber = getFormattedAccountNumber(user);
 
-  // Derive spendable WhatsApp earnings balance (falls back cleanly to user.balance if whatsappBalance is 0)
+  // Derive spendable WhatsApp earnings balance
   const effectiveWhatsAppBalance =
-    typeof user.whatsappBalance === 'number' && user.whatsappBalance > 0
+    typeof user?.whatsappBalance === 'number' && !isNaN(user.whatsappBalance)
       ? user.whatsappBalance
-      : typeof user.balance === 'number'
+      : typeof user?.balance === 'number' && !isNaN(user.balance)
       ? user.balance
       : 0;
 

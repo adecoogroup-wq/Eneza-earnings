@@ -83,9 +83,9 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
   });
 
   const effectiveWhatsAppBal =
-    typeof currentUser.whatsappBalance === 'number' && currentUser.whatsappBalance > 0
+    typeof currentUser?.whatsappBalance === 'number' && !isNaN(currentUser.whatsappBalance)
       ? currentUser.whatsappBalance
-      : typeof currentUser.balance === 'number'
+      : typeof currentUser?.balance === 'number' && !isNaN(currentUser.balance)
       ? currentUser.balance
       : 0;
 
