@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { getAllStoredUsers, registerOrUpdateUser, batchSyncUsers } from './src/utils/userStore';
+import { getAllStoredUsers, registerOrUpdateUser, deleteStoredUser, batchSyncUsers } from './src/utils/userStore';
 
 // In-memory payment transaction tracker for PayHero STK Push
 interface TrackedTransaction {
@@ -185,6 +185,33 @@ export function configureApiRoutes(app: express.Application) {
     } catch (err: any) {
       console.error('[Eneza User Update Error]:', err);
       res.status(500).json({ success: false, error: err?.message || 'Error updating user' });
+    }
+  });
+
+  // API Route: Delete user centrally
+  app.post('/api/users/delete', (req, res) => {
+    try {
+      const body = req.body || {};
+      const userId = body.id;
+      if (!userId) {
+        return res.status(400).json({ success: false, error: 'User ID is required for deletion' });
+      }
+
+      deleteStoredUser(userId);
+      const allUsers = getAllStoredUsers();
+
+      console.log(`[Eneza Cloud Registry] Deleted user with ID: ${userId}. Remaining total: ${allUsers.length}`);
+
+      res.json({
+        success: true,
+        message: 'User successfully deleted from central registry',
+        deletedUserId: userId,
+        totalUsers: allUsers.length,
+        users: allUsers,
+      });
+    } catch (err: any) {
+      console.error('[Eneza User Delete Error]:', err);
+      res.status(500).json({ success: false, error: err?.message || 'Error deleting user' });
     }
   });
 

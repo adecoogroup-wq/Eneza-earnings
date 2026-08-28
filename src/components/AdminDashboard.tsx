@@ -37,6 +37,15 @@ import {
   Sparkles,
   Edit3,
   Download,
+  Trash2,
+  Coins,
+  DollarSign,
+  ShieldCheck,
+  Layers,
+  ArrowDownLeft,
+  Mail,
+  Smartphone,
+  Tag,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -46,6 +55,20 @@ interface AdminDashboardProps {
   onApproveWithdrawal: (txId: string) => void;
   onRejectWithdrawal: (txId: string, reason: string) => void;
   onUpdateUserBalance: (userId: string, deltaAmount: number) => void;
+  onAdjustUserBalances?: (
+    userId: string,
+    adjustments: {
+      balanceDelta?: number;
+      whatsappDelta?: number;
+      depositDelta?: number;
+      setDirect?: boolean;
+      newBalance?: number;
+      newWhatsappBalance?: number;
+      newDepositBalance?: number;
+    }
+  ) => void;
+  onUpdateUserDetails?: (userId: string, updatedFields: Partial<User>) => void;
+  onDeleteUser?: (userId: string) => void;
   onUpdateUserTier: (userId: string, newTier: TierLevel) => void;
   onCreateTask: (newTask: EarningTask) => void;
   onSendBroadcastNotification: (title: string, message: string) => void;
@@ -61,6 +84,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onApproveWithdrawal,
   onRejectWithdrawal,
   onUpdateUserBalance,
+  onAdjustUserBalances,
+  onUpdateUserDetails,
+  onDeleteUser,
   onUpdateUserTier,
   onCreateTask,
   onSendBroadcastNotification,
@@ -97,9 +123,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [rejectingTxId, setRejectingTxId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('M-Pesa details mismatch');
 
-  // User balance adjustment state
-  const [selectedUserForBalance, setSelectedUserForBalance] = useState<string | null>(null);
-  const [balanceDelta, setBalanceDelta] = useState<number>(500);
+  // User balance adjustment & allocation state
+  const [balanceTargetUser, setBalanceTargetUser] = useState<User | null>(null);
+  const [balanceCategory, setBalanceCategory] = useState<'whatsapp' | 'deposit' | 'spendable' | 'all'>('whatsapp');
+  const [balanceMode, setBalanceMode] = useState<'delta' | 'direct'>('delta');
+  const [adjustAmount, setAdjustAmount] = useState<number>(500);
+  const [directSpendableVal, setDirectSpendableVal] = useState<number>(0);
+  const [directWhatsappVal, setDirectWhatsappVal] = useState<number>(0);
+  const [directDepositVal, setDirectDepositVal] = useState<number>(0);
+  const [adjustReasonNote, setAdjustReasonNote] = useState<string>('');
+
+  // User editing state
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editForm, setEditForm] = useState<Partial<User>>({});
+  const [showPasswordInEdit, setShowPasswordInEdit] = useState<boolean>(false);
+
+  // User deletion state
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [isDeletingLoading, setIsDeletingLoading] = useState<boolean>(false);
+
+  // Inspection user modal
+  const [inspectingUser, setInspectingUser] = useState<User | null>(null);
+
+  // Admin toast notice
+  const [adminToast, setAdminToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setAdminToast({ message, type });
+    setTimeout(() => setAdminToast(null), 4000);
+  };
 
   // New task form state
   const [taskTitle, setTaskTitle] = useState('');
@@ -147,9 +199,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     message: string;
     receipt?: string;
   } | null>(null);
-
-  // Inspect User Data
-  const [inspectingUser, setInspectingUser] = useState<User | null>(null);
 
   // Filter users search
   const [userSearch, setUserSearch] = useState('');
@@ -931,6 +980,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
+          {adminToast && (
+            <div
+              className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between shadow-lg transition-all animate-fadeIn ${
+                adminToast.type === 'error'
+                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {adminToast.type === 'error' ? (
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                )}
+                <span>{adminToast.message}</span>
+              </div>
+              <button
+                onClick={() => setAdminToast(null)}
+                className="text-zinc-400 hover:text-white text-xs px-1.5 py-0.5 rounded cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {syncNotice && (
             <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -979,10 +1053,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <th className="pb-3 font-semibold">Phone</th>
                   <th className="pb-3 font-semibold">Inviter / Ref</th>
                   <th className="pb-3 font-semibold">Tier</th>
-                  <th className="pb-3 font-semibold">Spendable</th>
-                  <th className="pb-3 font-semibold">WhatsApp Pool</th>
+                  <th className="pb-3 font-semibold text-emerald-400">Spendable</th>
+                  <th className="pb-3 font-semibold text-blue-400">WhatsApp</th>
+                  <th className="pb-3 font-semibold text-amber-400">Deposit</th>
                   <th className="pb-3 font-semibold">Joined</th>
-                  <th className="pb-3 font-semibold">Actions</th>
+                  <th className="pb-3 font-semibold text-right">Admin Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/60">
@@ -995,18 +1070,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       (`${u.firstName || ''} ${u.lastName || ''}`).toLowerCase().includes(search) ||
                       (u.phone || '').includes(search) ||
                       (u.referredBy || '').toLowerCase().includes(search) ||
-                      (u.referralCode || '').toLowerCase().includes(search)
+                      (u.referralCode || '').toLowerCase().includes(search) ||
+                      (u.accountNumber || '').toLowerCase().includes(search)
                     );
                   })
                   .map((u) => (
-                    <tr key={u.id} className="hover:bg-zinc-800/20">
+                    <tr key={u.id} className="hover:bg-zinc-800/20 transition-colors">
                       <td className="py-3 font-semibold text-white">
                         <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-300 font-bold">
+                          <div className="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-300 font-bold shrink-0">
                             {(u.firstName || 'U')[0].toUpperCase()}
                           </div>
                           <div>
-                            <span>{u.firstName} {u.lastName}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span>{u.firstName} {u.lastName}</span>
+                              {u.role === 'admin' && (
+                                <span className="px-1.5 py-0.2 rounded bg-red-500/20 text-red-400 text-[9px] font-bold uppercase">
+                                  Admin
+                                </span>
+                              )}
+                              {u.isActivated ? (
+                                <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-bold">
+                                  Active
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-500 text-[9px]">
+                                  Inactive
+                                </span>
+                              )}
+                            </div>
                             <span className="block text-[10px] text-zinc-500 font-mono font-normal">
                               @{u.username} • Acc: <strong className="text-indigo-300 font-semibold">{getFormattedAccountNumber(u)}</strong> • Code: <strong className="text-zinc-400">{u.referralCode}</strong>
                             </span>
@@ -1027,8 +1119,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <td className="py-3">
                         <select
                           value={u.tier || 'Standard'}
-                          onChange={(e) => onUpdateUserTier(u.id, e.target.value as TierLevel)}
-                          className="rounded bg-zinc-950 border border-zinc-800 px-2 py-1 text-[11px] text-zinc-200 focus:outline-none font-bold"
+                          onChange={(e) => {
+                            onUpdateUserTier(u.id, e.target.value as TierLevel);
+                            showToast(`Updated @${u.username} tier to ${e.target.value}`);
+                          }}
+                          className="rounded bg-zinc-950 border border-zinc-800 px-2 py-1 text-[11px] text-zinc-200 focus:outline-none font-bold cursor-pointer"
                         >
                           <option value="Standard">Standard</option>
                           <option value="Bronze">Bronze</option>
@@ -1041,28 +1136,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <td className="py-3 font-mono font-bold text-emerald-400">
                         KES {(u.balance || 0).toLocaleString()}
                       </td>
-                      <td className="py-3 font-mono text-blue-400">
-                        KES {(u.whatsappBalance || 0).toLocaleString()}
+                      <td className="py-3 font-mono text-blue-400 font-bold">
+                        KES {(u.whatsappBalance || u.balance || 0).toLocaleString()}
+                      </td>
+                      <td className="py-3 font-mono text-amber-400 font-semibold">
+                        KES {(u.depositBalance || 0).toLocaleString()}
                       </td>
                       <td className="py-3 font-mono text-[10px] text-zinc-500">
                         {u.createdAt ? safeFormatDateTime(u.createdAt).split(',')[0] : 'Recent'}
                       </td>
-                      <td className="py-3">
-                        <div className="flex items-center gap-1.5">
+                      <td className="py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* View Profile */}
                           <button
                             onClick={() => setInspectingUser(u)}
-                            className="px-2.5 py-1 rounded bg-indigo-900/40 hover:bg-indigo-800/60 border border-indigo-500/30 text-indigo-200 text-[11px] font-semibold transition cursor-pointer flex items-center gap-1"
+                            title="View Full Profile"
+                            className="px-2 py-1 rounded bg-indigo-900/40 hover:bg-indigo-800/60 border border-indigo-500/30 text-indigo-200 text-[11px] font-semibold transition cursor-pointer flex items-center gap-1"
                           >
                             <Eye className="w-3 h-3" />
-                            <span>View</span>
+                            <span className="hidden sm:inline">View</span>
                           </button>
+
+                          {/* Add WhatsApp / Deposit / Spendable Funds */}
                           <button
                             onClick={() => {
-                              setSelectedUserForBalance(u.id);
+                              setBalanceTargetUser(u);
+                              setBalanceCategory('whatsapp');
+                              setBalanceMode('delta');
+                              setAdjustAmount(500);
+                              setDirectSpendableVal(u.balance || 0);
+                              setDirectWhatsappVal(u.whatsappBalance !== undefined ? u.whatsappBalance : (u.balance || 0));
+                              setDirectDepositVal(u.depositBalance || 0);
+                              setAdjustReasonNote('');
                             }}
-                            className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-semibold transition cursor-pointer"
+                            title="Add WhatsApp Earnings or Deposit"
+                            className="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
                           >
-                            Adjust
+                            <Coins className="w-3 h-3 text-emerald-400" />
+                            <span>Add Funds</span>
+                          </button>
+
+                          {/* Edit Details */}
+                          <button
+                            onClick={() => {
+                              setEditingUser(u);
+                              setEditForm({ ...u });
+                              setShowPasswordInEdit(false);
+                            }}
+                            title="Edit User Details"
+                            className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 border border-zinc-700"
+                          >
+                            <Edit3 className="w-3 h-3 text-zinc-400" />
+                            <span className="hidden sm:inline">Edit</span>
+                          </button>
+
+                          {/* Delete User */}
+                          <button
+                            onClick={() => setDeletingUser(u)}
+                            title="Delete User"
+                            className="p-1 rounded bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -1071,6 +1205,673 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </tbody>
             </table>
           </div>
+
+          {/* ======================================================== */}
+          {/* 1. ADD WHATSAPP EARNINGS, DEPOSIT & BALANCE MODAL        */}
+          {/* ======================================================== */}
+          {balanceTargetUser && (
+            <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 animate-fadeIn">
+              <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl max-w-md w-full space-y-4 shadow-2xl text-zinc-100">
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-950 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                      <Coins className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Add Funds & Allocate Balances</h4>
+                      <p className="text-[11px] text-zinc-400 font-mono">
+                        {balanceTargetUser.firstName} {balanceTargetUser.lastName} (@{balanceTargetUser.username})
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setBalanceTargetUser(null)}
+                    className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Member Current Live Balances Snapshot */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 uppercase font-bold block">Spendable</span>
+                    <span className="text-xs font-mono font-bold text-emerald-400">
+                      KES {(balanceTargetUser.balance || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 uppercase font-bold block">WhatsApp</span>
+                    <span className="text-xs font-mono font-bold text-blue-400">
+                      KES {(balanceTargetUser.whatsappBalance || balanceTargetUser.balance || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800">
+                    <span className="text-[10px] text-zinc-500 uppercase font-bold block">Deposit</span>
+                    <span className="text-xs font-mono font-bold text-amber-400">
+                      KES {(balanceTargetUser.depositBalance || 0).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Balance Target Selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Select Balance To Credit / Debit</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setBalanceCategory('whatsapp')}
+                      className={`p-2 rounded-lg border text-xs font-bold transition flex flex-col items-center gap-0.5 cursor-pointer ${
+                        balanceCategory === 'whatsapp'
+                          ? 'bg-blue-500/20 border-blue-500/60 text-blue-300 shadow-sm'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <span>💬 WhatsApp</span>
+                      <span className="text-[9px] font-normal text-zinc-500">Ad & Task Earnings</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBalanceCategory('deposit')}
+                      className={`p-2 rounded-lg border text-xs font-bold transition flex flex-col items-center gap-0.5 cursor-pointer ${
+                        balanceCategory === 'deposit'
+                          ? 'bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-sm'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <span>📥 Deposit</span>
+                      <span className="text-[9px] font-normal text-zinc-500">M-Pesa Funds</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBalanceCategory('spendable')}
+                      className={`p-2 rounded-lg border text-xs font-bold transition flex flex-col items-center gap-0.5 cursor-pointer ${
+                        balanceCategory === 'spendable'
+                          ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 shadow-sm'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <span>💵 Spendable</span>
+                      <span className="text-[9px] font-normal text-zinc-500">Main Balance</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Adjustment Mode: Delta vs Direct */}
+                <div className="flex rounded-lg bg-zinc-950 p-1 border border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setBalanceMode('delta')}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
+                      balanceMode === 'delta' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Credit / Debit (Add Amount)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBalanceMode('direct')}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${
+                      balanceMode === 'direct' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    Set Exact Amount
+                  </button>
+                </div>
+
+                {balanceMode === 'delta' ? (
+                  <div className="space-y-2.5">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs text-zinc-300 font-semibold">
+                          Amount To Add (KES)
+                        </label>
+                        <span className="text-[10px] text-zinc-500">
+                          {adjustAmount >= 0 ? `+KES ${adjustAmount.toLocaleString()}` : `-KES ${Math.abs(adjustAmount).toLocaleString()}`}
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        value={adjustAmount}
+                        onChange={(e) => setAdjustAmount(Number(e.target.value))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-sm text-zinc-100 font-mono font-bold focus:border-emerald-500 focus:outline-none"
+                        placeholder="e.g. 1000"
+                      />
+                    </div>
+
+                    {/* Quick Preset Buttons */}
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[100, 250, 500, 1000, 2500, 5000, 10000, -500].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => setAdjustAmount(amt)}
+                          className={`py-1.5 rounded-lg border text-[11px] font-mono font-bold transition cursor-pointer ${
+                            adjustAmount === amt
+                              ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          {amt > 0 ? `+${amt}` : amt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {balanceCategory === 'whatsapp' && (
+                      <div>
+                        <label className="block text-xs text-zinc-300 font-semibold mb-1">
+                          Exact WhatsApp Earnings Balance (KES)
+                        </label>
+                        <input
+                          type="number"
+                          value={directWhatsappVal}
+                          onChange={(e) => setDirectWhatsappVal(Number(e.target.value))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-blue-300 font-mono font-bold"
+                        />
+                      </div>
+                    )}
+                    {balanceCategory === 'deposit' && (
+                      <div>
+                        <label className="block text-xs text-zinc-300 font-semibold mb-1">
+                          Exact Deposit Balance (KES)
+                        </label>
+                        <input
+                          type="number"
+                          value={directDepositVal}
+                          onChange={(e) => setDirectDepositVal(Number(e.target.value))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-amber-300 font-mono font-bold"
+                        />
+                      </div>
+                    )}
+                    {balanceCategory === 'spendable' && (
+                      <div>
+                        <label className="block text-xs text-zinc-300 font-semibold mb-1">
+                          Exact Spendable Balance (KES)
+                        </label>
+                        <input
+                          type="number"
+                          value={directSpendableVal}
+                          onChange={(e) => setDirectSpendableVal(Number(e.target.value))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-emerald-300 font-mono font-bold"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Optional Note */}
+                <div>
+                  <label className="block text-[11px] text-zinc-400 mb-1">Reason / Reference (Optional)</label>
+                  <input
+                    type="text"
+                    value={adjustReasonNote}
+                    onChange={(e) => setAdjustReasonNote(e.target.value)}
+                    placeholder="e.g. Daily WhatsApp campaign payout, manual deposit verification"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-200 focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setBalanceTargetUser(null)}
+                    className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!balanceTargetUser) return;
+                      const uid = balanceTargetUser.id;
+
+                      if (balanceMode === 'delta') {
+                        if (balanceCategory === 'whatsapp') {
+                          if (onAdjustUserBalances) {
+                            onAdjustUserBalances(uid, { whatsappDelta: adjustAmount });
+                          } else {
+                            onUpdateUserBalance(uid, adjustAmount);
+                          }
+                          showToast(`Added KES ${adjustAmount} to @${balanceTargetUser.username}'s WhatsApp Earnings`);
+                        } else if (balanceCategory === 'deposit') {
+                          if (onAdjustUserBalances) {
+                            onAdjustUserBalances(uid, { depositDelta: adjustAmount });
+                          } else {
+                            onUpdateUserBalance(uid, adjustAmount);
+                          }
+                          showToast(`Added KES ${adjustAmount} to @${balanceTargetUser.username}'s Deposit Balance`);
+                        } else {
+                          if (onAdjustUserBalances) {
+                            onAdjustUserBalances(uid, { balanceDelta: adjustAmount });
+                          } else {
+                            onUpdateUserBalance(uid, adjustAmount);
+                          }
+                          showToast(`Adjusted @${balanceTargetUser.username}'s Spendable Balance by KES ${adjustAmount}`);
+                        }
+                      } else {
+                        // Direct set mode
+                        if (onAdjustUserBalances) {
+                          onAdjustUserBalances(uid, {
+                            setDirect: true,
+                            newBalance: balanceCategory === 'spendable' ? directSpendableVal : undefined,
+                            newWhatsappBalance: balanceCategory === 'whatsapp' ? directWhatsappVal : undefined,
+                            newDepositBalance: balanceCategory === 'deposit' ? directDepositVal : undefined,
+                          });
+                        }
+                        showToast(`Set @${balanceTargetUser.username}'s ${balanceCategory} balance successfully`);
+                      }
+
+                      setBalanceTargetUser(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950/40 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Apply & Save Balance</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* 2. COMPREHENSIVE EDIT USER DETAILS MODAL                 */}
+          {/* ======================================================== */}
+          {editingUser && (
+            <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 animate-fadeIn">
+              <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl max-w-xl w-full space-y-4 shadow-2xl text-zinc-100 max-h-[92vh] overflow-y-auto">
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-950 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-bold">
+                      <Edit3 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Edit Member Details</h4>
+                      <p className="text-[11px] text-zinc-400 font-mono">
+                        Updating profile & parameters for ID: {editingUser.id}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setEditingUser(null)}
+                    className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!editingUser) return;
+                    if (onUpdateUserDetails) {
+                      onUpdateUserDetails(editingUser.id, editForm);
+                    }
+                    showToast(`Successfully updated details for @${editForm.username || editingUser.username}`);
+                    setEditingUser(null);
+                  }}
+                  className="space-y-4 text-xs"
+                >
+                  {/* Section: Personal & Account Identity */}
+                  <div>
+                    <h5 className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 mb-2 flex items-center gap-1.5">
+                      <UserIcon className="w-3.5 h-3.5" />
+                      <span>Personal Information & Account Number</span>
+                    </h5>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-zinc-400 mb-1">First Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={editForm.firstName || ''}
+                          onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-zinc-100 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Last Name</label>
+                        <input
+                          type="text"
+                          value={editForm.lastName || ''}
+                          onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-zinc-100 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Phone Number</label>
+                        <input
+                          type="text"
+                          required
+                          value={editForm.phone || ''}
+                          onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-zinc-100 font-mono focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Account Number</label>
+                        <input
+                          type="text"
+                          value={editForm.accountNumber || ''}
+                          onChange={(e) => setEditForm({ ...editForm, accountNumber: e.target.value })}
+                          placeholder="e.g. EE-38914-92"
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-indigo-300 font-mono font-bold focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Username</label>
+                        <input
+                          type="text"
+                          required
+                          value={editForm.username || ''}
+                          onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-zinc-100 font-mono focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Email</label>
+                        <input
+                          type="email"
+                          value={editForm.email || ''}
+                          onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-zinc-100 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Password & Access */}
+                  <div>
+                    <h5 className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-2 flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5" />
+                      <span>Security & Password</span>
+                    </h5>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="relative">
+                        <label className="block text-zinc-400 mb-1">Password</label>
+                        <div className="relative">
+                          <input
+                            type={showPasswordInEdit ? 'text' : 'password'}
+                            value={editForm.password || ''}
+                            onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 pr-8 text-zinc-100 font-mono focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPasswordInEdit(!showPasswordInEdit)}
+                            className="absolute right-2 top-2.5 text-zinc-500 hover:text-zinc-300"
+                          >
+                            {showPasswordInEdit ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Role</label>
+                        <select
+                          value={editForm.role || 'user'}
+                          onChange={(e) => setEditForm({ ...editForm, role: e.target.value as 'user' | 'admin' })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-zinc-100 focus:outline-none"
+                        >
+                          <option value="user">Standard User</option>
+                          <option value="admin">Administrator</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Tier & Status */}
+                  <div>
+                    <h5 className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 mb-2 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Membership Tier & Activation Status</span>
+                    </h5>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Membership Tier</label>
+                        <select
+                          value={editForm.tier || 'Standard'}
+                          onChange={(e) => setEditForm({ ...editForm, tier: e.target.value as TierLevel })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-amber-300 font-bold focus:outline-none"
+                        >
+                          <option value="Standard">Standard (KES 100/day)</option>
+                          <option value="Bronze">Bronze (KES 250/day)</option>
+                          <option value="Silver">Silver (KES 500/day)</option>
+                          <option value="Gold">Gold (KES 1,000/day)</option>
+                          <option value="Platinum">Platinum (KES 2,500/day)</option>
+                          <option value="VIP">VIP (KES 5,000/day)</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col justify-end">
+                        <label className="flex items-center gap-2 p-2 rounded-lg bg-zinc-950 border border-zinc-800 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(editForm.isActivated)}
+                            onChange={(e) => setEditForm({ ...editForm, isActivated: e.target.checked })}
+                            className="rounded accent-emerald-500 w-4 h-4"
+                          />
+                          <span className="text-zinc-200 font-semibold">Account Activated (Paid / Active)</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Balances */}
+                  <div>
+                    <h5 className="text-[11px] font-bold uppercase tracking-wider text-blue-400 mb-2 flex items-center gap-1.5">
+                      <Wallet className="w-3.5 h-3.5" />
+                      <span>Member Balances (KES)</span>
+                    </h5>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Spendable Balance</label>
+                        <input
+                          type="number"
+                          value={editForm.balance ?? 0}
+                          onChange={(e) => setEditForm({ ...editForm, balance: Number(e.target.value) })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-emerald-400 font-mono font-bold focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">WhatsApp Earnings</label>
+                        <input
+                          type="number"
+                          value={editForm.whatsappBalance ?? 0}
+                          onChange={(e) => setEditForm({ ...editForm, whatsappBalance: Number(e.target.value) })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-blue-400 font-mono font-bold focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Deposit Balance</label>
+                        <input
+                          type="number"
+                          value={editForm.depositBalance ?? 0}
+                          onChange={(e) => setEditForm({ ...editForm, depositBalance: Number(e.target.value) })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-amber-400 font-mono font-bold focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Referral Codes */}
+                  <div>
+                    <h5 className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5" />
+                      <span>Referral Codes</span>
+                    </h5>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-zinc-400 mb-1">User's Personal Ref Code</label>
+                        <input
+                          type="text"
+                          value={editForm.referralCode || ''}
+                          onChange={(e) => setEditForm({ ...editForm, referralCode: e.target.value })}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-indigo-300 font-mono font-bold focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Referred By (Inviter Code)</label>
+                        <input
+                          type="text"
+                          value={editForm.referredBy || ''}
+                          onChange={(e) => setEditForm({ ...editForm, referredBy: e.target.value })}
+                          placeholder="e.g. ENEZAPRO"
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-amber-300 font-mono focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Activated Packages & Privileges */}
+                  <div>
+                    <h5 className="text-[11px] font-bold uppercase tracking-wider text-purple-400 mb-2 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Unlocked Packages & Features</span>
+                    </h5>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="flex items-center gap-2 p-2 rounded-lg bg-zinc-950 border border-zinc-800 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editForm.isAutomationPackagePurchased)}
+                          onChange={(e) => setEditForm({ ...editForm, isAutomationPackagePurchased: e.target.checked })}
+                          className="rounded accent-indigo-500"
+                        />
+                        <span className="text-zinc-300">Automation Package (KES 900)</span>
+                      </label>
+                      <label className="flex items-center gap-2 p-2 rounded-lg bg-zinc-950 border border-zinc-800 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editForm.isVerifiedAgentPurchased)}
+                          onChange={(e) => setEditForm({ ...editForm, isVerifiedAgentPurchased: e.target.checked })}
+                          className="rounded accent-indigo-500"
+                        />
+                        <span className="text-zinc-300">Verified Agent (KES 1,200)</span>
+                      </label>
+                      <label className="flex items-center gap-2 p-2 rounded-lg bg-zinc-950 border border-zinc-800 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editForm.isUniversePackagePurchased)}
+                          onChange={(e) => setEditForm({ ...editForm, isUniversePackagePurchased: e.target.checked })}
+                          className="rounded accent-indigo-500"
+                        />
+                        <span className="text-zinc-300">Universe Package (KES 2,000)</span>
+                      </label>
+                      <label className="flex items-center gap-2 p-2 rounded-lg bg-zinc-950 border border-zinc-800 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editForm.isAuthorizedPackagePurchased)}
+                          onChange={(e) => setEditForm({ ...editForm, isAuthorizedPackagePurchased: e.target.checked })}
+                          className="rounded accent-indigo-500"
+                        />
+                        <span className="text-zinc-300">Authorized WhatsApp Package</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => setEditingUser(null)}
+                      className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-1.5 shadow-lg shadow-indigo-950/50 cursor-pointer"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Save All Changes</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* 3. DELETE USER CONFIRMATION MODAL                        */}
+          {/* ======================================================== */}
+          {deletingUser && (
+            <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 animate-fadeIn">
+              <div className="bg-zinc-900 border border-rose-900/60 p-6 rounded-2xl max-w-sm w-full space-y-4 shadow-2xl text-zinc-100">
+                <div className="flex items-center gap-3 pb-3 border-b border-zinc-800 text-rose-400">
+                  <div className="w-10 h-10 rounded-xl bg-rose-950/60 border border-rose-500/40 flex items-center justify-center shrink-0">
+                    <Trash2 className="w-5 h-5 text-rose-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Permanently Delete Member?</h4>
+                    <p className="text-[11px] text-zinc-400">This action cannot be undone.</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-500">Name:</span>
+                    <span className="font-bold text-white">{deletingUser.firstName} {deletingUser.lastName}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-500">Username:</span>
+                    <span className="font-mono text-zinc-300">@{deletingUser.username}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-500">Phone:</span>
+                    <span className="font-mono text-zinc-300">{deletingUser.phone}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-500">Account #:</span>
+                    <span className="font-mono text-indigo-300">{getFormattedAccountNumber(deletingUser)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-500">Spendable Balance:</span>
+                    <span className="font-mono text-emerald-400">KES {(deletingUser.balance || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-500">WhatsApp Balance:</span>
+                    <span className="font-mono text-blue-400">KES {(deletingUser.whatsappBalance || deletingUser.balance || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Deleting this user will permanently erase their credentials, balance, earnings, and records from the central database across all devices.
+                </p>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeletingLoading}
+                    onClick={() => setDeletingUser(null)}
+                    className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingLoading}
+                    onClick={async () => {
+                      if (!deletingUser) return;
+                      setIsDeletingLoading(true);
+                      try {
+                        if (onDeleteUser) {
+                          await onDeleteUser(deletingUser.id);
+                        }
+                        showToast(`Member @${deletingUser.username} successfully deleted`);
+                      } catch (err) {
+                        showToast('Failed to delete user', 'error');
+                      } finally {
+                        setIsDeletingLoading(false);
+                        setDeletingUser(null);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:bg-rose-900 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-rose-950/50 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>{isDeletingLoading ? 'Deleting...' : 'Delete Permanently'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Full User Data Inspection Modal */}
           {inspectingUser && (
@@ -1090,7 +1891,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <button
                     onClick={() => setInspectingUser(null)}
-                    className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white transition"
+                    className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1137,13 +1938,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
                     <span className="text-zinc-500 block text-[10px] uppercase font-bold">WhatsApp Balance Pool</span>
                     <span className="font-mono text-blue-400 font-bold text-sm">
-                      KES {(inspectingUser.whatsappBalance || 0).toLocaleString()}
+                      KES {(inspectingUser.whatsappBalance || inspectingUser.balance || 0).toLocaleString()}
                     </span>
                   </div>
                   <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
-                    <span className="text-zinc-500 block text-[10px] uppercase font-bold">Pending Cashback Pool</span>
-                    <span className="font-mono text-amber-400 font-bold">
-                      KES {(inspectingUser.pendingCashbackTotal || 0).toLocaleString()}
+                    <span className="text-zinc-500 block text-[10px] uppercase font-bold">Deposit Balance</span>
+                    <span className="font-mono text-amber-400 font-bold text-sm">
+                      KES {(inspectingUser.depositBalance || 0).toLocaleString()}
                     </span>
                   </div>
                   <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
@@ -1152,7 +1953,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       KES {(inspectingUser.totalEarned || 0).toLocaleString()}
                     </span>
                   </div>
-                  <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80 col-span-2">
+                  <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
                     <span className="text-zinc-500 block text-[10px] uppercase font-bold">Date Registered</span>
                     <span className="font-mono text-zinc-300 font-semibold">
                       {inspectingUser.createdAt ? safeFormatDateTime(inspectingUser.createdAt) : 'Initial User'}
@@ -1193,50 +1994,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-2 flex justify-end">
+                <div className="pt-2 flex items-center justify-between border-t border-zinc-800">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        const target = inspectingUser;
+                        setInspectingUser(null);
+                        setEditingUser(target);
+                        setEditForm({ ...target });
+                        setShowPasswordInEdit(false);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>Edit Member</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const target = inspectingUser;
+                        setInspectingUser(null);
+                        setBalanceTargetUser(target);
+                        setBalanceCategory('whatsapp');
+                        setBalanceMode('delta');
+                        setAdjustAmount(500);
+                        setDirectSpendableVal(target.balance || 0);
+                        setDirectWhatsappVal(target.whatsappBalance !== undefined ? target.whatsappBalance : (target.balance || 0));
+                        setDirectDepositVal(target.depositBalance || 0);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-950 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Coins className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Add Funds</span>
+                    </button>
+                  </div>
                   <button
                     onClick={() => setInspectingUser(null)}
                     className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold cursor-pointer"
                   >
                     Close Profile
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Adjust User Balance Modal */}
-          {selectedUserForBalance && (
-            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-              <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl max-w-xs w-full space-y-4">
-                <h4 className="text-sm font-bold text-white">Credit / Debit Member Balance</h4>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Adjustment Amount (KES)</label>
-                  <input
-                    type="number"
-                    value={balanceDelta}
-                    onChange={(e) => setBalanceDelta(Number(e.target.value))}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 font-mono"
-                  />
-                  <span className="text-[10px] text-zinc-500 mt-1 block">
-                    Use positive numbers to add balance, negative to deduct.
-                  </span>
-                </div>
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    onClick={() => setSelectedUserForBalance(null)}
-                    className="px-3 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      onUpdateUserBalance(selectedUserForBalance, balanceDelta);
-                      setSelectedUserForBalance(null);
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold"
-                  >
-                    Apply Adjustment
                   </button>
                 </div>
               </div>

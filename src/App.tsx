@@ -56,6 +56,8 @@ import {
   captureReferralCodeFromUrl,
   fetchRemoteUsers,
   registerRemoteUser,
+  updateRemoteUser,
+  deleteRemoteUser,
   syncAllUsersWithBackend,
   mergeUserLists,
 } from './utils/userSync';
@@ -82,6 +84,8 @@ export default function App() {
 
   const normalizeUser = (u: any): User => {
     if (!u) return INITIAL_USERS[0];
+    const bal = Number(u.balance || 0);
+    const waBal = typeof u.whatsappBalance === 'number' && u.whatsappBalance > 0 ? u.whatsappBalance : (u.whatsappBalance !== undefined ? Number(u.whatsappBalance) : bal);
     return {
       id: u.id || `usr_${Date.now()}`,
       username: u.username || 'user',
@@ -94,7 +98,7 @@ export default function App() {
       role: u.role || 'user',
       isActivated: Boolean(u.isActivated),
       tier: u.tier || 'Standard',
-      balance: Number(u.balance || 0),
+      balance: bal,
       depositBalance: Number(u.depositBalance || 0),
       pendingBalance: Number(u.pendingBalance || 0),
       totalWithdrawn: Number(u.totalWithdrawn || 0),
@@ -106,7 +110,7 @@ export default function App() {
       maxTasksPerDay: Number(u.maxTasksPerDay || 5),
       createdAt: u.createdAt || new Date().toISOString(),
       avatarUrl: u.avatarUrl,
-      whatsappBalance: Number(u.whatsappBalance || 0),
+      whatsappBalance: waBal,
       pendingCashbackTotal: Number(u.pendingCashbackTotal || 0),
       activeWhatsAppPackage: u.activeWhatsAppPackage,
       isAuthorizedPackagePurchased: Boolean(u.isAuthorizedPackagePurchased),
@@ -275,7 +279,36 @@ export default function App() {
       try {
         const remote = await fetchRemoteUsers();
         if (remote && remote.length > 0) {
-          setUsers((prev) => mergeUserLists(prev, remote));
+          setUsers((prev) => {
+            const merged = mergeUserLists(prev, remote);
+            return merged;
+          });
+
+          // If a user is currently logged in, ensure their balance and status stay up to date
+          setCurrentUser((curr) => {
+            if (!curr) return null;
+            const fresh = remote.find(
+              (r) =>
+                r.id === curr.id ||
+                (r.phone && curr.phone && r.phone.replace(/\D/g, '') === curr.phone.replace(/\D/g, ''))
+            );
+            if (fresh) {
+              return {
+                ...curr,
+                ...fresh,
+                balance: fresh.balance !== undefined ? fresh.balance : curr.balance,
+                whatsappBalance:
+                  fresh.whatsappBalance !== undefined
+                    ? fresh.whatsappBalance
+                    : (fresh.balance ?? curr.whatsappBalance),
+                depositBalance:
+                  fresh.depositBalance !== undefined ? fresh.depositBalance : curr.depositBalance,
+                isActivated: fresh.isActivated ?? curr.isActivated,
+                tier: fresh.tier || curr.tier,
+              };
+            }
+            return curr;
+          });
         }
       } catch (err) {
         console.warn('Startup user sync warning:', err);
@@ -284,19 +317,61 @@ export default function App() {
 
     doSync();
 
-    // Background poll every 12 seconds so admin dashboard receives new registrations from other clients
-    const interval = setInterval(doSync, 12000);
+    // Background poll every 10 seconds so admin dashboard and clients receive live updates
+    const interval = setInterval(doSync, 10000);
     return () => clearInterval(interval);
   }, []);
 
   // Handle Login
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    if (user.role === 'admin') {
+  const handleLogin = async (user: User) => {
+    // 1. Ensure we pick the freshest version from memory
+    const inState = users.find(
+      (u) =>
+        u.id === user.id ||
+        (u.phone && user.phone && u.phone.replace(/\D/g, '') === user.phone.replace(/\D/g, ''))
+    );
+    const normalized = normalizeUser(inState ? { ...user, ...inState } : user);
+
+    setCurrentUser(normalized);
+    setStored('current_user', normalized);
+
+    if (normalized.role === 'admin') {
       setAdminUnlocked(true);
       setCurrentView('adminDashboardView');
     } else {
       setCurrentView('userDashboardView');
+    }
+
+    // 2. Fetch directly from central registry to guarantee latest balance immediately on login
+    try {
+      const remote = await fetchRemoteUsers();
+      if (remote && remote.length > 0) {
+        const remoteMatch = remote.find(
+          (r) =>
+            r.id === user.id ||
+            (r.phone && user.phone && r.phone.replace(/\D/g, '') === user.phone.replace(/\D/g, ''))
+        );
+        if (remoteMatch) {
+          const fresh = normalizeUser({
+            ...normalized,
+            ...remoteMatch,
+            balance: remoteMatch.balance !== undefined ? remoteMatch.balance : normalized.balance,
+            whatsappBalance:
+              remoteMatch.whatsappBalance !== undefined
+                ? remoteMatch.whatsappBalance
+                : (remoteMatch.balance ?? normalized.whatsappBalance),
+            depositBalance:
+              remoteMatch.depositBalance !== undefined
+                ? remoteMatch.depositBalance
+                : normalized.depositBalance,
+          });
+          setCurrentUser(fresh);
+          setStored('current_user', fresh);
+          setUsers((prev) => prev.map((u) => (u.id === fresh.id ? fresh : u)));
+        }
+      }
+    } catch (err) {
+      console.warn('Post-login sync check:', err);
     }
   };
 
@@ -1468,39 +1543,170 @@ export default function App() {
     alert(`Withdrawal rejected. Funds have been refunded to the member balance.`);
   };
 
-  const handleAdminUpdateUserBalance = (userId: string, deltaAmount: number) => {
+  const handleAdminUpdateUserBalance = async (userId: string, deltaAmount: number) => {
+    let updatedUserTarget: User | null = null;
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id === userId) {
+          const newBal = Math.max(0, (u.balance || 0) + deltaAmount);
+          const newWaBal = Math.max(0, (u.whatsappBalance || u.balance || 0) + deltaAmount);
           const updated = {
             ...u,
-            balance: Math.max(0, u.balance + deltaAmount),
-            totalEarned: deltaAmount > 0 ? u.totalEarned + deltaAmount : u.totalEarned,
+            balance: newBal,
+            whatsappBalance: newWaBal,
+            totalEarned: deltaAmount > 0 ? (u.totalEarned || 0) + deltaAmount : (u.totalEarned || 0),
           };
+          updatedUserTarget = updated;
           if (currentUser?.id === userId) {
             setCurrentUser(updated);
+            setStored('current_user', updated);
           }
           return updated;
         }
         return u;
       })
     );
+
+    if (updatedUserTarget) {
+      try {
+        await updateRemoteUser(updatedUserTarget);
+      } catch (err) {
+        console.warn('Central registry balance sync fallback:', err);
+      }
+    }
+
     alert(`Adjusted user balance by KES ${deltaAmount > 0 ? '+' : ''}${deltaAmount}`);
   };
 
-  const handleAdminUpdateUserTier = (userId: string, newTier: TierLevel) => {
+  const handleAdminAdjustBalances = async (
+    userId: string,
+    adjustments: {
+      balanceDelta?: number;
+      whatsappDelta?: number;
+      depositDelta?: number;
+      setDirect?: boolean;
+      newBalance?: number;
+      newWhatsappBalance?: number;
+      newDepositBalance?: number;
+    }
+  ) => {
+    let updatedUserTarget: User | null = null;
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === userId) {
+          let newBal = u.balance || 0;
+          let newWaBal = u.whatsappBalance !== undefined ? u.whatsappBalance : (u.balance || 0);
+          let newDepBal = u.depositBalance || 0;
+
+          if (adjustments.setDirect) {
+            if (adjustments.newBalance !== undefined) newBal = Math.max(0, adjustments.newBalance);
+            if (adjustments.newWhatsappBalance !== undefined) newWaBal = Math.max(0, adjustments.newWhatsappBalance);
+            if (adjustments.newDepositBalance !== undefined) newDepBal = Math.max(0, adjustments.newDepositBalance);
+          } else {
+            if (adjustments.balanceDelta !== undefined) newBal = Math.max(0, newBal + adjustments.balanceDelta);
+            if (adjustments.whatsappDelta !== undefined) newWaBal = Math.max(0, newWaBal + adjustments.whatsappDelta);
+            if (adjustments.depositDelta !== undefined) newDepBal = Math.max(0, newDepBal + adjustments.depositDelta);
+          }
+
+          const earnedBonus = (adjustments.balanceDelta && adjustments.balanceDelta > 0 ? adjustments.balanceDelta : 0) +
+            (adjustments.whatsappDelta && adjustments.whatsappDelta > 0 ? adjustments.whatsappDelta : 0);
+
+          const updated: User = {
+            ...u,
+            balance: newBal,
+            whatsappBalance: newWaBal,
+            depositBalance: newDepBal,
+            totalEarned: earnedBonus > 0 ? (u.totalEarned || 0) + earnedBonus : (u.totalEarned || 0),
+          };
+          updatedUserTarget = updated;
+          if (currentUser?.id === userId) {
+            setCurrentUser(updated);
+            setStored('current_user', updated);
+          }
+          return updated;
+        }
+        return u;
+      })
+    );
+
+    if (updatedUserTarget) {
+      try {
+        await updateRemoteUser(updatedUserTarget);
+      } catch (err) {
+        console.warn('Central registry balance sync fallback:', err);
+      }
+    }
+  };
+
+  const handleAdminUpdateUserDetails = async (userId: string, updatedFields: Partial<User>) => {
+    let updatedUserTarget: User | null = null;
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === userId) {
+          const updated = normalizeUser({
+            ...u,
+            ...updatedFields,
+            id: u.id,
+          });
+          updatedUserTarget = updated;
+          if (currentUser?.id === userId) {
+            setCurrentUser(updated);
+            setStored('current_user', updated);
+          }
+          return updated;
+        }
+        return u;
+      })
+    );
+
+    if (updatedUserTarget) {
+      try {
+        await updateRemoteUser(updatedUserTarget);
+      } catch (err) {
+        console.warn('Central registry user update error:', err);
+      }
+    }
+  };
+
+  const handleAdminDeleteUser = async (userId: string) => {
+    if (currentUser?.id === userId) {
+      alert('You cannot delete the currently active admin account.');
+      return;
+    }
+
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+
+    try {
+      await deleteRemoteUser(userId);
+    } catch (err) {
+      console.warn('Central registry user delete error:', err);
+    }
+  };
+
+  const handleAdminUpdateUserTier = async (userId: string, newTier: TierLevel) => {
+    let updatedUserTarget: User | null = null;
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id === userId) {
           const updated = { ...u, tier: newTier };
+          updatedUserTarget = updated;
           if (currentUser?.id === userId) {
             setCurrentUser(updated);
+            setStored('current_user', updated);
           }
           return updated;
         }
         return u;
       })
     );
+
+    if (updatedUserTarget) {
+      try {
+        await updateRemoteUser(updatedUserTarget);
+      } catch (err) {
+        console.warn('Central registry tier sync fallback:', err);
+      }
+    }
   };
 
   const handleAdminCreateTask = (newTask: EarningTask) => {
@@ -1792,6 +1998,9 @@ export default function App() {
               onApproveWithdrawal={handleAdminApproveWithdrawal}
               onRejectWithdrawal={handleAdminRejectWithdrawal}
               onUpdateUserBalance={handleAdminUpdateUserBalance}
+              onAdjustUserBalances={handleAdminAdjustBalances}
+              onUpdateUserDetails={handleAdminUpdateUserDetails}
+              onDeleteUser={handleAdminDeleteUser}
               onUpdateUserTier={handleAdminUpdateUserTier}
               onCreateTask={handleAdminCreateTask}
               onSendBroadcastNotification={handleAdminBroadcast}

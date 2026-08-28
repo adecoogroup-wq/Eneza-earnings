@@ -128,6 +128,34 @@ export async function updateRemoteUser(user: Partial<User> & { id: string }): Pr
 }
 
 /**
+ * Delete user in the central database
+ */
+export async function deleteRemoteUser(userId: string): Promise<{ success: boolean; allUsers?: User[] }> {
+  try {
+    const res = await fetch('/api/users/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ id: userId }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      console.log(`[Eneza User Sync] Successfully deleted ${userId} from central registry!`);
+      return {
+        success: true,
+        allUsers: data.users || [],
+      };
+    }
+  } catch (err) {
+    console.warn('[Eneza User Sync] Network error during remote user deletion:', err);
+  }
+
+  return { success: false };
+}
+
+/**
  * Batch synchronize client and server users
  */
 export async function syncAllUsersWithBackend(clientUsers: User[]): Promise<User[]> {

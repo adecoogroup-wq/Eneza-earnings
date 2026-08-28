@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { INITIAL_USERS } from '../data/mockData';
 import { ShieldCheck, UserCheck, Smartphone, KeyRound, Sparkles, ArrowRight, Gift, CheckCircle2 } from 'lucide-react';
-import { captureReferralCodeFromUrl, getCapturedReferralCode, clearCapturedReferralCode } from '../utils/userSync';
+import { captureReferralCodeFromUrl, getCapturedReferralCode, clearCapturedReferralCode, fetchRemoteUsers } from '../utils/userSync';
 import { generateNewAccountNumber } from '../utils/accountNumber';
 
 interface AuthModuleProps {
@@ -43,7 +43,7 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
     }
   }, []);
 
-  const handleSignInSubmit = (e: React.FormEvent) => {
+  const handleSignInSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignInError('');
 
@@ -82,25 +82,47 @@ export const AuthModule: React.FC<AuthModuleProps> = ({ onLogin, registeredUsers
       return;
     }
 
-    // Standard authentication: Find user across registered database and initial users
-    const allUsersPool = [...registeredUsers, ...INITIAL_USERS];
-    const user = allUsersPool.find((u) => {
-      const uPhoneDigits = (u.phone || '').replace(/\D/g, '');
-      const isPhoneMatch =
-        cleanPhoneDigits.length >= 7 &&
-        (uPhoneDigits === cleanPhoneDigits ||
-          uPhoneDigits.endsWith(cleanPhoneDigits.slice(-9)) ||
-          cleanPhoneDigits.endsWith(uPhoneDigits.slice(-9)));
-
-      const isUserOrEmailMatch =
-        u.username.toLowerCase() === cleanInput ||
-        (u.email && u.email.toLowerCase() === cleanInput) ||
-        (u.firstName && u.firstName.toLowerCase() === cleanInput);
-
-      const isPassMatch = (u.password || '').trim() === cleanPassword;
-
-      return (isPhoneMatch || isUserOrEmailMatch) && isPassMatch;
+    // Standard authentication: Find user across registered database and initial users with registeredUsers taking priority
+    const usersMap = new Map<string, User>();
+    INITIAL_USERS.forEach((u) => usersMap.set(u.id, { ...u }));
+    registeredUsers.forEach((u) => {
+      const ex = usersMap.get(u.id);
+      usersMap.set(u.id, ex ? { ...ex, ...u } : { ...u });
     });
+    let allUsersPool = Array.from(usersMap.values());
+
+    const findMatch = (pool: User[]) =>
+      pool.find((u) => {
+        const uPhoneDigits = (u.phone || '').replace(/\D/g, '');
+        const isPhoneMatch =
+          cleanPhoneDigits.length >= 7 &&
+          (uPhoneDigits === cleanPhoneDigits ||
+            uPhoneDigits.endsWith(cleanPhoneDigits.slice(-9)) ||
+            cleanPhoneDigits.endsWith(uPhoneDigits.slice(-9)));
+
+        const isUserOrEmailMatch =
+          u.username.toLowerCase() === cleanInput ||
+          (u.email && u.email.toLowerCase() === cleanInput) ||
+          (u.firstName && u.firstName.toLowerCase() === cleanInput);
+
+        const isPassMatch = (u.password || '').trim() === cleanPassword;
+
+        return (isPhoneMatch || isUserOrEmailMatch) && isPassMatch;
+      });
+
+    let user = findMatch(allUsersPool);
+
+    if (!user) {
+      // Check live central registry if not found in current pool
+      try {
+        const remoteUsers = await fetchRemoteUsers();
+        if (remoteUsers && remoteUsers.length > 0) {
+          user = findMatch(remoteUsers);
+        }
+      } catch (err) {
+        console.warn('Fallback remote login search failed:', err);
+      }
+    }
 
     if (user) {
       onLogin(user);

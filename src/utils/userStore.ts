@@ -130,6 +130,25 @@ export function registerOrUpdateUser(user: Partial<User> & { id: string }): User
   return merged;
 }
 
+export function deleteStoredUser(userId: string): boolean {
+  const map = globalThis._enezaRegisteredUsers || new Map<string, User>();
+  const user = map.get(userId);
+  if (user) {
+    map.delete(userId);
+    if (user.phone) {
+      const cleanPhone = user.phone.replace(/\D/g, '');
+      if (cleanPhone) map.delete(`phone_${cleanPhone}`);
+    }
+  }
+
+  // Also remove from file
+  const fileUsers = loadUsersFromFile();
+  const filtered = fileUsers.filter((u) => u.id !== userId && (!user?.phone || u.phone?.replace(/\D/g, '') !== user.phone.replace(/\D/g, '')));
+  saveUsersToFile(filtered);
+
+  return true;
+}
+
 export function batchSyncUsers(usersToSync: User[]): User[] {
   if (!Array.isArray(usersToSync)) return getAllStoredUsers();
 

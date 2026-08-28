@@ -82,6 +82,13 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
     seconds: 0,
   });
 
+  const effectiveWhatsAppBal =
+    typeof currentUser.whatsappBalance === 'number' && currentUser.whatsappBalance > 0
+      ? currentUser.whatsappBalance
+      : typeof currentUser.balance === 'number'
+      ? currentUser.balance
+      : 0;
+
   // Calculate live countdown to next 24-hour product refresh (midnight)
   useEffect(() => {
     const updateCountdown = () => {
@@ -308,12 +315,12 @@ export const WhatsAppEarningsView: React.FC<WhatsAppEarningsViewProps> = ({
               WhatsApp Earnings Balance
             </span>
             <div className="text-3xl font-black font-mono text-emerald-400">
-              KES {(currentUser.whatsappBalance || 0).toLocaleString()}
+              KES {Math.floor(effectiveWhatsAppBal).toLocaleString()}
             </div>
 
             <button
               onClick={handleDisburseClick}
-              disabled={isDisbursing || (currentUser.whatsappBalance || 0) <= 0}
+              disabled={isDisbursing || effectiveWhatsAppBal <= 0}
               className="w-full px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/40 transition active:scale-[0.99] cursor-pointer"
             >
               {isDisbursing ? (
