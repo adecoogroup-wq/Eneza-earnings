@@ -188,27 +188,52 @@ export function mergeUserLists(local: User[], remote: User[]): User[] {
   const map = new Map<string, User>();
   const phoneToId = new Map<string, string>();
 
-  const registerUser = (u: User, isRemote = false) => {
+  const registerUser = (u: User) => {
     if (!u || !u.id) return;
     const cleanPhone = u.phone ? u.phone.replace(/\D/g, '') : '';
-    const existingId = map.has(u.id) ? u.id : (cleanPhone && phoneToId.has(cleanPhone) ? phoneToId.get(cleanPhone) : null);
+    const existingId = map.has(u.id)
+      ? u.id
+      : cleanPhone && phoneToId.has(cleanPhone)
+      ? phoneToId.get(cleanPhone)
+      : null;
 
     if (existingId && map.has(existingId)) {
       const existing = map.get(existingId)!;
       const merged: User = {
         ...existing,
         ...u,
-        id: existing.id, // Preserve consistent key
-        balance: isRemote ? (u.balance !== undefined ? u.balance : existing.balance) : (existing.balance !== undefined ? existing.balance : u.balance),
-        depositBalance: isRemote ? (u.depositBalance !== undefined ? u.depositBalance : existing.depositBalance) : (existing.depositBalance !== undefined ? existing.depositBalance : u.depositBalance),
-        whatsappBalance: isRemote ? (u.whatsappBalance !== undefined ? u.whatsappBalance : existing.whatsappBalance) : (existing.whatsappBalance !== undefined ? existing.whatsappBalance : u.whatsappBalance),
-        isActivated: u.isActivated !== undefined ? u.isActivated : existing.isActivated,
+        id: existing.id, // Preserve consistent canonical key
+        // Incoming u object takes precedence if properties are explicitly defined
+        balance: u.balance !== undefined ? Number(u.balance) : existing.balance,
+        depositBalance:
+          u.depositBalance !== undefined ? Number(u.depositBalance) : existing.depositBalance,
+        whatsappBalance:
+          u.whatsappBalance !== undefined
+            ? Number(u.whatsappBalance)
+            : existing.whatsappBalance !== undefined
+            ? existing.whatsappBalance
+            : (u.balance !== undefined ? Number(u.balance) : existing.balance),
+        pendingBalance:
+          u.pendingBalance !== undefined ? Number(u.pendingBalance) : existing.pendingBalance,
+        totalWithdrawn:
+          u.totalWithdrawn !== undefined ? Number(u.totalWithdrawn) : existing.totalWithdrawn,
+        totalEarned:
+          u.totalEarned !== undefined ? Number(u.totalEarned) : existing.totalEarned,
+        isActivated: u.isActivated !== undefined ? Boolean(u.isActivated) : existing.isActivated,
         tier: u.tier || existing.tier,
-        isAuthorizedPackagePurchased: u.isAuthorizedPackagePurchased ?? existing.isAuthorizedPackagePurchased,
-        isUnlockMpesaPurchased: u.isUnlockMpesaPurchased ?? existing.isUnlockMpesaPurchased,
-        isAutomationPackagePurchased: u.isAutomationPackagePurchased ?? existing.isAutomationPackagePurchased,
-        isVerifiedAgentPurchased: u.isVerifiedAgentPurchased ?? existing.isVerifiedAgentPurchased,
-        isUniversePackagePurchased: u.isUniversePackagePurchased ?? existing.isUniversePackagePurchased,
+        role: u.role || existing.role,
+        isAuthorizedPackagePurchased:
+          u.isAuthorizedPackagePurchased ?? existing.isAuthorizedPackagePurchased,
+        isUnlockMpesaPurchased:
+          u.isUnlockMpesaPurchased ?? existing.isUnlockMpesaPurchased,
+        isAutomationPackagePurchased:
+          u.isAutomationPackagePurchased ?? existing.isAutomationPackagePurchased,
+        isVerifiedAgentPurchased:
+          u.isVerifiedAgentPurchased ?? existing.isVerifiedAgentPurchased,
+        isUniversePackagePurchased:
+          u.isUniversePackagePurchased ?? existing.isUniversePackagePurchased,
+        activeWhatsAppPackage:
+          u.activeWhatsAppPackage || existing.activeWhatsAppPackage,
       };
       map.set(existingId, merged);
       if (cleanPhone) phoneToId.set(cleanPhone, existingId);
@@ -218,17 +243,17 @@ export function mergeUserLists(local: User[], remote: User[]): User[] {
     }
   };
 
-  // 1. Add initial seed users
-  INITIAL_USERS.forEach((u) => registerUser({ ...u }, false));
+  // 1. First add initial seed users as baseline defaults
+  INITIAL_USERS.forEach((u) => registerUser({ ...u }));
 
-  // 2. Add local users (from localStorage/state)
+  // 2. Add local users (from current state / localStorage which overrides seed defaults)
   if (Array.isArray(local)) {
-    local.forEach((u) => registerUser(u, false));
+    local.forEach((u) => registerUser(u));
   }
 
-  // 3. Merge remote users (central server source of truth)
+  // 3. Add remote users from server (source of truth across devices)
   if (Array.isArray(remote)) {
-    remote.forEach((u) => registerUser(u, true));
+    remote.forEach((u) => registerUser(u));
   }
 
   const merged = Array.from(map.values());

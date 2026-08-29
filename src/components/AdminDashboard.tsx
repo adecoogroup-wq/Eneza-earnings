@@ -1405,7 +1405,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             onClick={() => {
                               setBalanceTargetUser(u);
-                              setBalanceCategory('whatsapp');
+                              setBalanceCategory('all');
                               setBalanceMode('delta');
                               setAdjustAmount(500);
                               setDirectSpendableVal(u.balance || 0);
@@ -1413,7 +1413,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               setDirectDepositVal(u.depositBalance || 0);
                               setAdjustReasonNote('');
                             }}
-                            title="Add WhatsApp Earnings or Deposit"
+                            title="Add WhatsApp Earnings or Deposit Funds"
                             className="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold transition cursor-pointer flex items-center gap-1"
                           >
                             <Coins className="w-3 h-3 text-emerald-400" />
@@ -1501,7 +1501,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {/* Balance Target Selector */}
                 <div>
                   <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Select Balance To Credit / Debit</label>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setBalanceCategory('all')}
+                      className={`p-2 rounded-lg border text-xs font-bold transition flex flex-col items-center gap-0.5 cursor-pointer ${
+                        balanceCategory === 'all'
+                          ? 'bg-purple-500/20 border-purple-500/60 text-purple-300 shadow-sm'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <span>🌟 All Balances</span>
+                      <span className="text-[9px] font-normal text-zinc-500">Spendable & WhatsApp</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => setBalanceCategory('whatsapp')}
@@ -1603,6 +1615,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-2">
+                    {balanceCategory === 'all' && (
+                      <div>
+                        <label className="block text-xs text-zinc-300 font-semibold mb-1">
+                          Exact Balance to Set for Both Spendable & WhatsApp (KES)
+                        </label>
+                        <input
+                          type="number"
+                          value={directSpendableVal}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setDirectSpendableVal(val);
+                            setDirectWhatsappVal(val);
+                          }}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 text-xs text-purple-300 font-mono font-bold"
+                        />
+                      </div>
+                    )}
                     {balanceCategory === 'whatsapp' && (
                       <div>
                         <label className="block text-xs text-zinc-300 font-semibold mb-1">
@@ -1672,9 +1701,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const uid = balanceTargetUser.id;
 
                       if (balanceMode === 'delta') {
-                        if (balanceCategory === 'whatsapp') {
+                        if (balanceCategory === 'all') {
                           if (onAdjustUserBalances) {
-                            onAdjustUserBalances(uid, { whatsappDelta: adjustAmount });
+                            onAdjustUserBalances(uid, {
+                              balanceDelta: adjustAmount,
+                              whatsappDelta: adjustAmount,
+                            });
+                          } else {
+                            onUpdateUserBalance(uid, adjustAmount);
+                          }
+                          showToast(`Added KES ${adjustAmount} to @${balanceTargetUser.username}'s Account Balances`);
+                        } else if (balanceCategory === 'whatsapp') {
+                          if (onAdjustUserBalances) {
+                            onAdjustUserBalances(uid, {
+                              whatsappDelta: adjustAmount,
+                              balanceDelta: adjustAmount,
+                            });
                           } else {
                             onUpdateUserBalance(uid, adjustAmount);
                           }
@@ -1688,7 +1730,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           showToast(`Added KES ${adjustAmount} to @${balanceTargetUser.username}'s Deposit Balance`);
                         } else {
                           if (onAdjustUserBalances) {
-                            onAdjustUserBalances(uid, { balanceDelta: adjustAmount });
+                            onAdjustUserBalances(uid, {
+                              balanceDelta: adjustAmount,
+                              whatsappDelta: adjustAmount,
+                            });
                           } else {
                             onUpdateUserBalance(uid, adjustAmount);
                           }
@@ -1697,12 +1742,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       } else {
                         // Direct set mode
                         if (onAdjustUserBalances) {
-                          onAdjustUserBalances(uid, {
-                            setDirect: true,
-                            newBalance: balanceCategory === 'spendable' ? directSpendableVal : undefined,
-                            newWhatsappBalance: balanceCategory === 'whatsapp' ? directWhatsappVal : undefined,
-                            newDepositBalance: balanceCategory === 'deposit' ? directDepositVal : undefined,
-                          });
+                          if (balanceCategory === 'all') {
+                            onAdjustUserBalances(uid, {
+                              setDirect: true,
+                              newBalance: directSpendableVal,
+                              newWhatsappBalance: directSpendableVal,
+                            });
+                          } else {
+                            onAdjustUserBalances(uid, {
+                              setDirect: true,
+                              newBalance: balanceCategory === 'spendable' ? directSpendableVal : undefined,
+                              newWhatsappBalance: balanceCategory === 'whatsapp' ? directWhatsappVal : undefined,
+                              newDepositBalance: balanceCategory === 'deposit' ? directDepositVal : undefined,
+                            });
+                          }
                         }
                         showToast(`Set @${balanceTargetUser.username}'s ${balanceCategory} balance successfully`);
                       }

@@ -61,14 +61,17 @@ import {
   syncAllUsersWithBackend,
   mergeUserLists,
   broadcastUserUpdate,
+  recordUserActivityRemote,
 } from './utils/userSync';
 import { getFormattedAccountNumber } from './utils/accountNumber';
 
 export default function App() {
   // Persistence key helpers
+  // Persistence key helpers (handles keys with or without 'eneza_' prefix seamlessly)
   const getStored = <T,>(key: string, fallback: T): T => {
     try {
-      const item = localStorage.getItem(`eneza_${key}`);
+      const cleanKey = key.startsWith('eneza_') ? key.slice(6) : key;
+      const item = localStorage.getItem(`eneza_${cleanKey}`) || localStorage.getItem(cleanKey);
       return item ? JSON.parse(item) : fallback;
     } catch {
       return fallback;
@@ -77,7 +80,12 @@ export default function App() {
 
   const setStored = <T,>(key: string, val: T) => {
     try {
-      localStorage.setItem(`eneza_${key}`, JSON.stringify(val));
+      const cleanKey = key.startsWith('eneza_') ? key.slice(6) : key;
+      const json = JSON.stringify(val);
+      localStorage.setItem(`eneza_${cleanKey}`, json);
+      if (cleanKey === 'users') {
+        localStorage.setItem('users', json);
+      }
     } catch {
       // ignore
     }
@@ -218,6 +226,11 @@ export default function App() {
   // Admin verification state for sandbox testing
   const [adminUnlocked, setAdminUnlocked] = useState(false);
 
+  // Admin Impersonation Session State
+  const [impersonatingAdmin, setImpersonatingAdmin] = useState<User | null>(() =>
+    getStored<User | null>('impersonating_admin', null)
+  );
+
   // Modal States
   const [isDepositOpen, setIsDepositOpen] = useState(false);
   const [depositDefaultAmount, setDepositDefaultAmount] = useState<number>(500);
@@ -273,6 +286,10 @@ export default function App() {
   useEffect(() => {
     setStored('dark_mode', isDarkMode);
   }, [isDarkMode]);
+
+  useEffect(() => {
+    setStored('impersonating_admin', impersonatingAdmin);
+  }, [impersonatingAdmin]);
 
   // Initial startup sync & periodic sync with central cloud backend
   useEffect(() => {
@@ -1499,7 +1516,7 @@ export default function App() {
   };
 
   // Admin Actions
-  const handleAdminApproveWithdrawal = (txId: string) => {
+  const handleAdminApproveWithdrawal = async (txId: string) => {
     const targetTx = transactions.find((t) => t.id === txId);
     if (!targetTx) return;
 
@@ -1507,31 +1524,51 @@ export default function App() {
       prev.map((t) => (t.id === txId ? { ...t, status: 'completed', approvedBy: 'Root Admin' } : t))
     );
 
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === targetTx.userId) {
-          return {
-            ...u,
-            pendingBalance: Math.max(0, u.pendingBalance - targetTx.amount),
-            totalWithdrawn: u.totalWithdrawn + targetTx.amount,
-          };
-        }
-        return u;
-      })
-    );
+    let targetUser = users.find((u) => u.id === targetTx.userId);
+    if (!targetUser) {
+      const stored = getStored<User[]>('eneza_users', INITIAL_USERS);
+      targetUser = stored.find((u) => u.id === targetTx.userId) || INITIAL_USERS.find((u) => u.id === targetTx.userId);
+    }
 
-    if (currentUser && currentUser.id === targetTx.userId) {
-      setCurrentUser({
-        ...currentUser,
-        pendingBalance: Math.max(0, currentUser.pendingBalance - targetTx.amount),
-        totalWithdrawn: currentUser.totalWithdrawn + targetTx.amount,
-      });
+    if (targetUser) {
+      const updated: User = {
+        ...targetUser,
+        pendingBalance: Math.max(0, (targetUser.pendingBalance || 0) - targetTx.amount),
+        totalWithdrawn: (targetUser.totalWithdrawn || 0) + targetTx.amount,
+      };
+
+      setUsers((prev) => prev.map((u) => (u.id === targetTx.userId ? updated : u)));
+      const currentStored = getStored<User[]>('eneza_users', INITIAL_USERS);
+      setStored(
+        'eneza_users',
+        currentStored.map((u) => (u.id === targetTx.userId ? updated : u))
+      );
+
+      if (
+        currentUser &&
+        (currentUser.id === targetTx.userId ||
+          (currentUser.phone && targetUser.phone && currentUser.phone.replace(/\D/g, '') === targetUser.phone.replace(/\D/g, '')))
+      ) {
+        setCurrentUser(updated);
+        setStored('current_user', updated);
+      }
+
+      try {
+        const res = await updateRemoteUser(updated);
+        if (res?.allUsers && Array.isArray(res.allUsers) && res.allUsers.length > 0) {
+          setUsers(res.allUsers);
+          setStored('eneza_users', res.allUsers);
+        }
+        broadcastUserUpdate();
+      } catch (err) {
+        console.warn('Admin approve withdrawal sync error:', err);
+      }
     }
 
     alert(`Disbursal approved for ${targetTx.userName} (KES ${(targetTx.amount || 0).toLocaleString()}) via M-Pesa B2C.`);
   };
 
-  const handleAdminRejectWithdrawal = (txId: string, reason: string) => {
+  const handleAdminRejectWithdrawal = async (txId: string, reason: string) => {
     const targetTx = transactions.find((t) => t.id === txId);
     if (!targetTx) return;
 
@@ -1539,64 +1576,146 @@ export default function App() {
       prev.map((t) => (t.id === txId ? { ...t, status: 'rejected', notes: reason } : t))
     );
 
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === targetTx.userId) {
-          return {
-            ...u,
-            pendingBalance: Math.max(0, u.pendingBalance - targetTx.amount),
-            balance: u.balance + targetTx.amount + targetTx.fee,
-          };
-        }
-        return u;
-      })
-    );
+    let targetUser = users.find((u) => u.id === targetTx.userId);
+    if (!targetUser) {
+      const stored = getStored<User[]>('eneza_users', INITIAL_USERS);
+      targetUser = stored.find((u) => u.id === targetTx.userId) || INITIAL_USERS.find((u) => u.id === targetTx.userId);
+    }
 
-    if (currentUser && currentUser.id === targetTx.userId) {
-      setCurrentUser({
-        ...currentUser,
-        pendingBalance: Math.max(0, currentUser.pendingBalance - targetTx.amount),
-        balance: currentUser.balance + targetTx.amount + targetTx.fee,
-      });
+    if (targetUser) {
+      const updated: User = {
+        ...targetUser,
+        pendingBalance: Math.max(0, (targetUser.pendingBalance || 0) - targetTx.amount),
+        balance: (targetUser.balance || 0) + targetTx.amount + (targetTx.fee || 0),
+      };
+
+      setUsers((prev) => prev.map((u) => (u.id === targetTx.userId ? updated : u)));
+      const currentStored = getStored<User[]>('eneza_users', INITIAL_USERS);
+      setStored(
+        'eneza_users',
+        currentStored.map((u) => (u.id === targetTx.userId ? updated : u))
+      );
+
+      if (
+        currentUser &&
+        (currentUser.id === targetTx.userId ||
+          (currentUser.phone && targetUser.phone && currentUser.phone.replace(/\D/g, '') === targetUser.phone.replace(/\D/g, '')))
+      ) {
+        setCurrentUser(updated);
+        setStored('current_user', updated);
+      }
+
+      try {
+        const res = await updateRemoteUser(updated);
+        if (res?.allUsers && Array.isArray(res.allUsers) && res.allUsers.length > 0) {
+          setUsers(res.allUsers);
+          setStored('eneza_users', res.allUsers);
+        }
+        broadcastUserUpdate();
+      } catch (err) {
+        console.warn('Admin reject withdrawal sync error:', err);
+      }
     }
 
     alert(`Withdrawal rejected. Funds have been refunded to the member balance.`);
   };
 
   const handleAdminUpdateUserBalance = async (userId: string, deltaAmount: number) => {
-    let updatedUserTarget: User | null = null;
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          const newBal = Math.max(0, (u.balance || 0) + deltaAmount);
-          const newWaBal = Math.max(0, (u.whatsappBalance !== undefined ? u.whatsappBalance : (u.balance || 0)) + deltaAmount);
-          const updated = {
-            ...u,
-            balance: newBal,
-            whatsappBalance: newWaBal,
-            totalEarned: deltaAmount > 0 ? (u.totalEarned || 0) + deltaAmount : (u.totalEarned || 0),
-          };
-          updatedUserTarget = updated;
-          if (currentUser?.id === userId || (currentUser?.phone && u.phone && currentUser.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))) {
-            setCurrentUser(updated);
-            setStored('current_user', updated);
-          }
-          return updated;
-        }
-        return u;
-      })
+    let targetUser = users.find((u) => u.id === userId);
+    if (!targetUser) {
+      const stored = getStored<User[]>('eneza_users', INITIAL_USERS);
+      targetUser = stored.find((u) => u.id === userId) || INITIAL_USERS.find((u) => u.id === userId);
+    }
+    if (!targetUser) {
+      console.warn(`User with ID ${userId} not found.`);
+      return;
+    }
+
+    const newBal = Math.max(0, (targetUser.balance || 0) + deltaAmount);
+    const newWaBal = Math.max(
+      0,
+      (targetUser.whatsappBalance !== undefined ? targetUser.whatsappBalance : (targetUser.balance || 0)) + deltaAmount
+    );
+    const updated: User = {
+      ...targetUser,
+      balance: newBal,
+      whatsappBalance: newWaBal,
+      totalEarned: deltaAmount > 0 ? (targetUser.totalEarned || 0) + deltaAmount : (targetUser.totalEarned || 0),
+    };
+
+    // 1. Immediately update React state for instant reflection
+    setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
+
+    // 2. Immediately update localStorage
+    const currentStored = getStored<User[]>('eneza_users', INITIAL_USERS);
+    setStored(
+      'eneza_users',
+      currentStored.map((u) => (u.id === userId ? updated : u))
     );
 
-    if (updatedUserTarget) {
-      try {
-        await updateRemoteUser(updatedUserTarget);
-        broadcastUserUpdate();
-      } catch (err) {
-        console.warn('Central registry balance sync fallback:', err);
+    // 3. Update logged-in user if this is their account
+    if (
+      currentUser?.id === userId ||
+      (currentUser?.phone && targetUser.phone && currentUser.phone.replace(/\D/g, '') === targetUser.phone.replace(/\D/g, ''))
+    ) {
+      setCurrentUser(updated);
+      setStored('current_user', updated);
+    }
+
+    // 4. Create transaction log & notification
+    if (deltaAmount !== 0) {
+      const isPositive = deltaAmount > 0;
+      const receiptCode = generateReceipt();
+      const adminTx: Transaction = {
+        id: `tx_admin_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        mpesaReceiptNo: receiptCode,
+        userId: targetUser.id,
+        userName: `${targetUser.firstName} ${targetUser.lastName}`,
+        userPhone: targetUser.phone,
+        type: isPositive ? 'deposit' : 'withdrawal',
+        amount: Math.abs(deltaAmount),
+        fee: 0,
+        netAmount: Math.abs(deltaAmount),
+        status: 'completed',
+        description: `Admin Account Credit: ${isPositive ? '+' : '-'}KES ${Math.abs(deltaAmount).toLocaleString()}`,
+        createdAt: new Date().toISOString(),
+      };
+      setTransactions((prev) => [adminTx, ...prev]);
+
+      if (isPositive) {
+        const newNotif: NotificationItem = {
+          id: `notif_${Date.now()}`,
+          title: 'Account Credited by Admin',
+          message: `Your balance has been updated (+KES ${deltaAmount.toLocaleString()})`,
+          time: 'Just now',
+          isRead: false,
+          type: 'money',
+        };
+        setNotifications((prev) => [newNotif, ...prev]);
       }
     }
 
-    alert(`Adjusted user balance by KES ${deltaAmount > 0 ? '+' : ''}${deltaAmount}`);
+    // 5. Persist to central database & broadcast to other tabs/sessions
+    try {
+      const res = await updateRemoteUser(updated);
+      if (res?.allUsers && Array.isArray(res.allUsers) && res.allUsers.length > 0) {
+        setUsers(res.allUsers);
+        setStored('eneza_users', res.allUsers);
+      }
+      broadcastUserUpdate();
+      recordUserActivityRemote({
+        userId: updated.id,
+        userName: `${updated.firstName} ${updated.lastName}`,
+        userPhone: updated.phone,
+        action: 'admin_adjustment',
+        title: 'Admin Balance Adjustment',
+        details: `Admin adjusted balance by KES ${deltaAmount > 0 ? '+' : ''}${deltaAmount}. Total spendable: KES ${updated.balance.toLocaleString()}`,
+        amount: deltaAmount,
+        metadata: { newBalance: updated.balance, whatsappBalance: updated.whatsappBalance }
+      });
+    } catch (err) {
+      console.warn('Central registry balance sync fallback:', err);
+    }
   };
 
   const handleAdminAdjustBalances = async (
@@ -1611,102 +1730,176 @@ export default function App() {
       newDepositBalance?: number;
     }
   ) => {
-    let updatedUserTarget: User | null = null;
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          let newBal = u.balance || 0;
-          let newWaBal = u.whatsappBalance !== undefined ? u.whatsappBalance : (u.balance || 0);
-          let newDepBal = u.depositBalance || 0;
+    let targetUser = users.find((u) => u.id === userId);
+    if (!targetUser) {
+      const stored = getStored<User[]>('eneza_users', INITIAL_USERS);
+      targetUser = stored.find((u) => u.id === userId) || INITIAL_USERS.find((u) => u.id === userId);
+    }
+    if (!targetUser) {
+      console.warn(`User with ID ${userId} not found.`);
+      return;
+    }
 
-          if (adjustments.setDirect) {
-            if (adjustments.newBalance !== undefined) newBal = Math.max(0, adjustments.newBalance);
-            if (adjustments.newWhatsappBalance !== undefined) newWaBal = Math.max(0, adjustments.newWhatsappBalance);
-            if (adjustments.newDepositBalance !== undefined) newDepBal = Math.max(0, adjustments.newDepositBalance);
-          } else {
-            if (adjustments.balanceDelta !== undefined) newBal = Math.max(0, newBal + adjustments.balanceDelta);
-            if (adjustments.whatsappDelta !== undefined) newWaBal = Math.max(0, newWaBal + adjustments.whatsappDelta);
-            if (adjustments.depositDelta !== undefined) newDepBal = Math.max(0, newDepBal + adjustments.depositDelta);
-          }
+    let newBal = targetUser.balance || 0;
+    let newWaBal = targetUser.whatsappBalance !== undefined ? targetUser.whatsappBalance : (targetUser.balance || 0);
+    let newDepBal = targetUser.depositBalance || 0;
 
-          const earnedBonus = (adjustments.balanceDelta && adjustments.balanceDelta > 0 ? adjustments.balanceDelta : 0) +
-            (adjustments.whatsappDelta && adjustments.whatsappDelta > 0 ? adjustments.whatsappDelta : 0);
+    if (adjustments.setDirect) {
+      if (adjustments.newBalance !== undefined) newBal = Math.max(0, adjustments.newBalance);
+      if (adjustments.newWhatsappBalance !== undefined) newWaBal = Math.max(0, adjustments.newWhatsappBalance);
+      if (adjustments.newDepositBalance !== undefined) newDepBal = Math.max(0, adjustments.newDepositBalance);
+    } else {
+      if (adjustments.balanceDelta !== undefined) newBal = Math.max(0, newBal + adjustments.balanceDelta);
+      if (adjustments.whatsappDelta !== undefined) newWaBal = Math.max(0, newWaBal + adjustments.whatsappDelta);
+      if (adjustments.depositDelta !== undefined) newDepBal = Math.max(0, newDepBal + adjustments.depositDelta);
+    }
 
-          const updated: User = {
-            ...u,
-            balance: newBal,
-            whatsappBalance: newWaBal,
-            depositBalance: newDepBal,
-            totalEarned: earnedBonus > 0 ? (u.totalEarned || 0) + earnedBonus : (u.totalEarned || 0),
-          };
-          updatedUserTarget = updated;
-          if (currentUser?.id === userId || (currentUser?.phone && u.phone && currentUser.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))) {
-            setCurrentUser(updated);
-            setStored('current_user', updated);
-          }
-          return updated;
-        }
-        return u;
-      })
+    const earnedBonus =
+      (adjustments.balanceDelta && adjustments.balanceDelta > 0 ? adjustments.balanceDelta : 0) +
+      (adjustments.whatsappDelta && adjustments.whatsappDelta > 0 ? adjustments.whatsappDelta : 0);
+
+    const updated: User = {
+      ...targetUser,
+      balance: newBal,
+      whatsappBalance: newWaBal,
+      depositBalance: newDepBal,
+      totalEarned: earnedBonus > 0 ? (targetUser.totalEarned || 0) + earnedBonus : (targetUser.totalEarned || 0),
+    };
+
+    // 1. Immediately update React state for instant reflection
+    setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
+
+    // 2. Immediately update localStorage
+    const currentStored = getStored<User[]>('eneza_users', INITIAL_USERS);
+    setStored(
+      'eneza_users',
+      currentStored.map((u) => (u.id === userId ? updated : u))
     );
 
-    if (updatedUserTarget) {
-      try {
-        await updateRemoteUser(updatedUserTarget);
-        broadcastUserUpdate();
-      } catch (err) {
-        console.warn('Central registry balance sync fallback:', err);
+    // 3. Update logged-in user if this is their account
+    if (
+      currentUser?.id === userId ||
+      (currentUser?.phone && targetUser.phone && currentUser.phone.replace(/\D/g, '') === targetUser.phone.replace(/\D/g, ''))
+    ) {
+      setCurrentUser(updated);
+      setStored('current_user', updated);
+    }
+
+    // 4. Create transaction log & notification
+    const deltaSum = (adjustments.balanceDelta || 0) || (adjustments.whatsappDelta || 0) || (adjustments.depositDelta || 0);
+    if (deltaSum !== 0) {
+      const isPositive = deltaSum > 0;
+      const receiptCode = generateReceipt();
+      const adminTx: Transaction = {
+        id: `tx_admin_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        mpesaReceiptNo: receiptCode,
+        userId: targetUser.id,
+        userName: `${targetUser.firstName} ${targetUser.lastName}`,
+        userPhone: targetUser.phone,
+        type: isPositive ? 'deposit' : 'withdrawal',
+        amount: Math.abs(deltaSum),
+        fee: 0,
+        netAmount: Math.abs(deltaSum),
+        status: 'completed',
+        description: `Admin Balance Topup: ${isPositive ? '+' : '-'}KES ${Math.abs(deltaSum).toLocaleString()}`,
+        createdAt: new Date().toISOString(),
+      };
+      setTransactions((prev) => [adminTx, ...prev]);
+
+      if (isPositive) {
+        const newNotif: NotificationItem = {
+          id: `notif_${Date.now()}`,
+          title: 'Account Credited by Admin',
+          message: `Your balance has been credited with +KES ${deltaSum.toLocaleString()}`,
+          time: 'Just now',
+          isRead: false,
+          type: 'money',
+        };
+        setNotifications((prev) => [newNotif, ...prev]);
       }
+    }
+
+    // 5. Persist to central database & broadcast to other tabs/sessions
+    try {
+      const res = await updateRemoteUser(updated);
+      if (res?.allUsers && Array.isArray(res.allUsers) && res.allUsers.length > 0) {
+        setUsers(res.allUsers);
+        setStored('eneza_users', res.allUsers);
+      }
+      broadcastUserUpdate();
+      recordUserActivityRemote({
+        userId: updated.id,
+        userName: `${updated.firstName} ${updated.lastName}`,
+        userPhone: updated.phone,
+        action: 'admin_adjustment',
+        title: 'Admin Balance Adjustment',
+        details: `Admin modified balance settings. Spendable: KES ${updated.balance.toLocaleString()}, WhatsApp: KES ${(updated.whatsappBalance ?? updated.balance).toLocaleString()}, Deposit: KES ${(updated.depositBalance || 0).toLocaleString()}`,
+        amount: updated.balance,
+        metadata: {
+          balance: updated.balance,
+          whatsappBalance: updated.whatsappBalance,
+          depositBalance: updated.depositBalance,
+        }
+      });
+    } catch (err) {
+      console.warn('Central registry balance sync fallback:', err);
     }
   };
 
   const handleAdminUpdateUserDetails = async (userId: string, updatedFields: Partial<User>) => {
-    let updatedUserTarget: User | null = null;
-    setUsers((prev) => {
-      const cleanPhone = updatedFields.phone ? updatedFields.phone.replace(/\D/g, '') : '';
-      const exists = prev.some(
-        (u) =>
-          u.id === userId ||
-          (cleanPhone && u.phone && u.phone.replace(/\D/g, '') === cleanPhone)
-      );
+    let targetUser = users.find((u) => u.id === userId);
+    if (!targetUser) {
+      const stored = getStored<User[]>('eneza_users', INITIAL_USERS);
+      targetUser = stored.find((u) => u.id === userId) || INITIAL_USERS.find((u) => u.id === userId);
+    }
 
-      if (!exists) {
-        const newUser = normalizeUser({ id: userId, ...updatedFields });
-        updatedUserTarget = newUser;
-        return [newUser, ...prev];
-      }
-
-      return prev.map((u) => {
-        if (
-          u.id === userId ||
-          (cleanPhone && u.phone && u.phone.replace(/\D/g, '') === cleanPhone)
-        ) {
-          const updated = normalizeUser({
-            ...u,
-            ...updatedFields,
-            id: u.id,
-          });
-          updatedUserTarget = updated;
-          if (
-            currentUser?.id === u.id ||
-            (currentUser?.phone && u.phone && currentUser.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))
-          ) {
-            setCurrentUser(updated);
-            setStored('current_user', updated);
-          }
-          return updated;
-        }
-        return u;
-      });
+    const updated = normalizeUser({
+      ...(targetUser || {}),
+      ...updatedFields,
+      id: userId,
     });
 
-    if (updatedUserTarget) {
-      try {
-        await updateRemoteUser(updatedUserTarget);
-        broadcastUserUpdate();
-      } catch (err) {
-        console.warn('Central registry user update error:', err);
+    setUsers((prev) => {
+      const exists = prev.some((u) => u.id === userId);
+      if (!exists) return [updated, ...prev];
+      return prev.map((u) => (u.id === userId ? updated : u));
+    });
+
+    const currentStored = getStored<User[]>('eneza_users', INITIAL_USERS);
+    const existsInStored = currentStored.some((u) => u.id === userId);
+    setStored(
+      'eneza_users',
+      existsInStored
+        ? currentStored.map((u) => (u.id === userId ? updated : u))
+        : [updated, ...currentStored]
+    );
+
+    if (
+      currentUser?.id === userId ||
+      (currentUser?.phone && targetUser?.phone && currentUser.phone.replace(/\D/g, '') === targetUser.phone.replace(/\D/g, ''))
+    ) {
+      setCurrentUser(updated);
+      setStored('current_user', updated);
+    }
+
+    try {
+      const res = await updateRemoteUser(updated);
+      if (res?.allUsers && Array.isArray(res.allUsers) && res.allUsers.length > 0) {
+        setUsers(res.allUsers);
+        setStored('eneza_users', res.allUsers);
       }
+      broadcastUserUpdate();
+      recordUserActivityRemote({
+        userId: updated.id,
+        userName: `${updated.firstName} ${updated.lastName}`,
+        userPhone: updated.phone,
+        action: 'admin_edit_member',
+        title: 'Admin Updated Member Profile',
+        details: `Admin modified profile/credentials for @${updated.username}`,
+        metadata: { userId: updated.id }
+      });
+    } catch (err) {
+      console.warn('Central registry user update error:', err);
     }
   };
 
@@ -1716,40 +1909,68 @@ export default function App() {
       return;
     }
 
+    const targetUser = users.find((u) => u.id === userId);
     setUsers((prev) => prev.filter((u) => u.id !== userId));
 
+    const currentStored = getStored<User[]>('eneza_users', INITIAL_USERS);
+    setStored('eneza_users', currentStored.filter((u) => u.id !== userId));
+
     try {
-      await deleteRemoteUser(userId);
+      const res = await deleteRemoteUser(userId);
+      if (res?.allUsers && Array.isArray(res.allUsers)) {
+        setUsers(res.allUsers);
+        setStored('eneza_users', res.allUsers);
+      }
       broadcastUserUpdate();
+      if (targetUser) {
+        recordUserActivityRemote({
+          userId: targetUser.id,
+          userName: `${targetUser.firstName} ${targetUser.lastName}`,
+          userPhone: targetUser.phone,
+          action: 'admin_delete_user',
+          title: 'Admin Deleted Member Account',
+          details: `Super Admin deleted account for @${targetUser.username}`,
+        });
+      }
     } catch (err) {
       console.warn('Central registry user delete error:', err);
     }
   };
 
   const handleAdminUpdateUserTier = async (userId: string, newTier: TierLevel) => {
-    let updatedUserTarget: User | null = null;
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          const updated = { ...u, tier: newTier };
-          updatedUserTarget = updated;
-          if (currentUser?.id === userId || (currentUser?.phone && u.phone && currentUser.phone.replace(/\D/g, '') === u.phone.replace(/\D/g, ''))) {
-            setCurrentUser(updated);
-            setStored('current_user', updated);
-          }
-          return updated;
-        }
-        return u;
-      })
+    let targetUser = users.find((u) => u.id === userId);
+    if (!targetUser) {
+      const stored = getStored<User[]>('eneza_users', INITIAL_USERS);
+      targetUser = stored.find((u) => u.id === userId) || INITIAL_USERS.find((u) => u.id === userId);
+    }
+    if (!targetUser) return;
+
+    const updated: User = { ...targetUser, tier: newTier };
+    setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
+
+    const currentStored = getStored<User[]>('eneza_users', INITIAL_USERS);
+    setStored(
+      'eneza_users',
+      currentStored.map((u) => (u.id === userId ? updated : u))
     );
 
-    if (updatedUserTarget) {
-      try {
-        await updateRemoteUser(updatedUserTarget);
-        broadcastUserUpdate();
-      } catch (err) {
-        console.warn('Central registry tier sync fallback:', err);
+    if (
+      currentUser?.id === userId ||
+      (currentUser?.phone && targetUser.phone && currentUser.phone.replace(/\D/g, '') === targetUser.phone.replace(/\D/g, ''))
+    ) {
+      setCurrentUser(updated);
+      setStored('current_user', updated);
+    }
+
+    try {
+      const res = await updateRemoteUser(updated);
+      if (res?.allUsers && Array.isArray(res.allUsers) && res.allUsers.length > 0) {
+        setUsers(res.allUsers);
+        setStored('eneza_users', res.allUsers);
       }
+      broadcastUserUpdate();
+    } catch (err) {
+      console.warn('Central registry tier sync fallback:', err);
     }
   };
 
@@ -1767,6 +1988,48 @@ export default function App() {
       type: 'alert',
     };
     setNotifications((prev) => [newNotif, ...prev]);
+  };
+
+  // Admin Direct Login into User Account (Impersonation)
+  const handleImpersonateUser = (targetUser: User) => {
+    if (currentUser && currentUser.role === 'admin') {
+      setImpersonatingAdmin(currentUser);
+      setStored('impersonating_admin', currentUser);
+    }
+    const inState = users.find(
+      (u) =>
+        u.id === targetUser.id ||
+        (u.phone && targetUser.phone && u.phone.replace(/\D/g, '') === targetUser.phone.replace(/\D/g, ''))
+    );
+    const normalized = normalizeUser(inState ? { ...targetUser, ...inState } : targetUser);
+    setCurrentUser(normalized);
+    setStored('current_user', normalized);
+    setCurrentView('userDashboardView');
+
+    recordUserActivityRemote({
+      userId: targetUser.id,
+      userName: `${targetUser.firstName} ${targetUser.lastName}`,
+      userPhone: targetUser.phone,
+      action: 'admin_impersonation',
+      title: 'Administrator Logged in as User',
+      details: `Admin directly accessed @${targetUser.username}'s client workspace`,
+      metadata: { targetUserId: targetUser.id, targetUsername: targetUser.username },
+    });
+  };
+
+  // Exit Impersonation back to Admin HQ
+  const handleExitImpersonation = () => {
+    const adminAccount =
+      impersonatingAdmin ||
+      users.find((u) => u.role === 'admin' || u.id === 'usr_admin') ||
+      INITIAL_USERS[0];
+    const normalizedAdmin = normalizeUser({ ...adminAccount, role: 'admin', isActivated: true });
+    setImpersonatingAdmin(null);
+    setStored('impersonating_admin', null);
+    setCurrentUser(normalizedAdmin);
+    setStored('current_user', normalizedAdmin);
+    setAdminUnlocked(true);
+    setCurrentView('adminDashboardView');
   };
 
   // If no user is logged in, show Auth Module
@@ -1835,6 +2098,34 @@ export default function App() {
           isDarkMode={isDarkMode}
           onToggleDarkMode={() => setIsDarkMode((prev) => !prev)}
         />
+
+        {/* Impersonation Indicator Banner */}
+        {impersonatingAdmin && (
+          <div className="bg-amber-500 text-zinc-950 px-4 py-2.5 text-xs sm:text-sm font-semibold flex flex-wrap items-center justify-between gap-2 shadow-md sticky top-16 z-30 border-b border-amber-600">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center justify-center px-2 py-0.5 rounded bg-zinc-950 text-amber-400 text-[11px] font-black uppercase tracking-wider">
+                Admin Impersonation
+              </span>
+              <span>
+                Logged in as <strong>{currentUser.firstName} {currentUser.lastName}</strong> (@{currentUser.username} · {currentUser.phone})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentView('adminDashboardView')}
+                className="px-2.5 py-1 rounded bg-zinc-950/15 hover:bg-zinc-950/25 text-zinc-950 text-xs font-bold transition cursor-pointer"
+              >
+                Admin HQ
+              </button>
+              <button
+                onClick={handleExitImpersonation}
+                className="px-3 py-1 rounded-md bg-zinc-950 text-amber-400 hover:bg-zinc-900 text-xs font-black transition cursor-pointer shadow-xs"
+              >
+                Exit to Admin
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* View Dynamic Router Container */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-16">
@@ -2048,6 +2339,7 @@ export default function App() {
               onUpdateUserTier={handleAdminUpdateUserTier}
               onCreateTask={handleAdminCreateTask}
               onSendBroadcastNotification={handleAdminBroadcast}
+              onImpersonateUser={handleImpersonateUser}
               payheroConfig={payheroConfig}
               onUpdatePayheroConfig={(newCfg) => {
                 setPayheroConfig(newCfg);

@@ -24,7 +24,6 @@ declare global {
 }
 
 function loadUsersFromFile(): User[] {
-  // Try project data file first, then /tmp fallback
   const candidatePaths = [PROJECT_FILE_PATH, TMP_FILE_PATH];
   for (const filePath of candidatePaths) {
     try {
@@ -64,64 +63,44 @@ function saveUsersToFile(users: User[]) {
   }
 }
 
-// Initialize global user map on startup with seed users + persisted file users
-if (!globalThis._enezaRegisteredUsers) {
-  globalThis._enezaRegisteredUsers = new Map<string, User>();
+function getStoreMap(): Map<string, User> {
+  if (!globalThis._enezaRegisteredUsers) {
+    globalThis._enezaRegisteredUsers = new Map<string, User>();
 
-  // 1. Seed initial users
-  INITIAL_USERS.forEach((u) => {
-    globalThis._enezaRegisteredUsers!.set(u.id, { ...u });
-    if (u.phone) {
-      const cleanPhone = u.phone.replace(/\D/g, '');
-      if (cleanPhone) globalThis._enezaRegisteredUsers!.set(`phone_${cleanPhone}`, { ...u });
-    }
-  });
-
-  // 2. Load and merge saved users from file
-  const savedUsers = loadUsersFromFile();
-  savedUsers.forEach((u) => {
-    if (u && u.id) {
-      const existing = globalThis._enezaRegisteredUsers!.get(u.id);
-      globalThis._enezaRegisteredUsers!.set(u.id, existing ? { ...existing, ...u } : { ...u });
+    // 1. Seed initial users
+    INITIAL_USERS.forEach((u) => {
+      globalThis._enezaRegisteredUsers!.set(u.id, { ...u });
       if (u.phone) {
         const cleanPhone = u.phone.replace(/\D/g, '');
-        if (cleanPhone) globalThis._enezaRegisteredUsers!.set(`phone_${cleanPhone}`, u);
+        if (cleanPhone) globalThis._enezaRegisteredUsers!.set(`phone_${cleanPhone}`, { ...u });
       }
-    }
-  });
+    });
+
+    // 2. Load persisted users from file
+    const savedUsers = loadUsersFromFile();
+    savedUsers.forEach((u) => {
+      if (u && u.id) {
+        const existing = globalThis._enezaRegisteredUsers!.get(u.id);
+        const merged = existing ? { ...existing, ...u } : { ...u };
+        globalThis._enezaRegisteredUsers!.set(u.id, merged);
+        if (u.phone) {
+          const cleanPhone = u.phone.replace(/\D/g, '');
+          if (cleanPhone) globalThis._enezaRegisteredUsers!.set(`phone_${cleanPhone}`, merged);
+        }
+      }
+    });
+  }
+  return globalThis._enezaRegisteredUsers;
 }
 
 export function getAllStoredUsers(): User[] {
-  const map = globalThis._enezaRegisteredUsers || new Map<string, User>();
-  const fileUsers = loadUsersFromFile();
-
-  // Merge file users into in-memory map without overwriting newer in-memory updates
-  fileUsers.forEach((u) => {
-    if (u && u.id) {
-      const current = map.get(u.id);
-      if (!current) {
-        map.set(u.id, u);
-      } else {
-        // Retain file persisted values merged with in-memory updates
-        map.set(u.id, { ...current, ...u });
-      }
-      if (u.phone) {
-        const cleanPhone = u.phone.replace(/\D/g, '');
-        if (cleanPhone) map.set(`phone_${cleanPhone}`, u);
-      }
-    }
-  });
-
-  // Extract unique users by id
+  const map = getStoreMap();
   const userMap = new Map<string, User>();
-  // Ensure seed users exist
-  INITIAL_USERS.forEach((u) => userMap.set(u.id, { ...u }));
 
   map.forEach((value, key) => {
     if (key.startsWith('phone_')) return;
     if (value && value.id) {
-      const existing = userMap.get(value.id);
-      userMap.set(value.id, existing ? { ...existing, ...value } : value);
+      userMap.set(value.id, value);
     }
   });
 
@@ -137,19 +116,29 @@ export function getAllStoredUsers(): User[] {
 }
 
 export function registerOrUpdateUser(user: Partial<User> & { id: string }): User {
-  const map = globalThis._enezaRegisteredUsers || new Map<string, User>();
+  const map = getStoreMap();
   const existing: Partial<User> = map.get(user.id) || {};
 
-  const cleanPhone = user.phone ? user.phone.replace(/\D/g, '') : (existing.phone ? existing.phone.replace(/\D/g, '') : '');
+  const cleanPhone = user.phone
+    ? user.phone.replace(/\D/g, '')
+    : (existing.phone ? existing.phone.replace(/\D/g, '') : '');
   const existingByPhone: Partial<User> = cleanPhone ? (map.get(`phone_${cleanPhone}`) || {}) : {};
 
   const baseUser = { ...existingByPhone, ...existing };
+
+  const parsedBalance = user.balance !== undefined ? Number(user.balance) : (baseUser.balance !== undefined ? Number(baseUser.balance) : 0);
+  const parsedWaBalance = user.whatsappBalance !== undefined
+    ? Number(user.whatsappBalance)
+    : (baseUser.whatsappBalance !== undefined
+      ? Number(baseUser.whatsappBalance)
+      : parsedBalance);
+  const parsedDepBalance = user.depositBalance !== undefined ? Number(user.depositBalance) : (baseUser.depositBalance !== undefined ? Number(baseUser.depositBalance) : 0);
 
   const merged: User = {
     id: user.id || baseUser.id || `usr_${Date.now()}`,
     username: user.username || baseUser.username || `user_${Date.now()}`,
     firstName: user.firstName || baseUser.firstName || 'Member',
-    lastName: user.lastName || baseUser.lastName || '',
+    lastName: user.lastName !== undefined ? user.lastName : (baseUser.lastName || ''),
     phone: user.phone || baseUser.phone || '',
     accountNumber: user.accountNumber || baseUser.accountNumber,
     email: user.email || baseUser.email,
@@ -157,21 +146,17 @@ export function registerOrUpdateUser(user: Partial<User> & { id: string }): User
     role: user.role || baseUser.role || 'user',
     isActivated: user.isActivated ?? baseUser.isActivated ?? false,
     tier: user.tier || baseUser.tier || 'Standard',
-    balance: Number(user.balance ?? baseUser.balance ?? 0),
-    depositBalance: Number(user.depositBalance ?? baseUser.depositBalance ?? 0),
+    balance: parsedBalance,
+    depositBalance: parsedDepBalance,
     pendingBalance: Number(user.pendingBalance ?? baseUser.pendingBalance ?? 0),
     totalWithdrawn: Number(user.totalWithdrawn ?? baseUser.totalWithdrawn ?? 0),
     totalEarned: Number(user.totalEarned ?? baseUser.totalEarned ?? 0),
     referralCode: user.referralCode || baseUser.referralCode || `EE${Math.floor(1000 + Math.random() * 9000)}`,
-    referredBy: user.referredBy || baseUser.referredBy || '',
+    referredBy: user.referredBy !== undefined ? user.referredBy : (baseUser.referredBy || ''),
     spinsRemaining: Number(user.spinsRemaining ?? baseUser.spinsRemaining ?? 1),
     tasksCompletedToday: Number(user.tasksCompletedToday ?? baseUser.tasksCompletedToday ?? 0),
     maxTasksPerDay: Number(user.maxTasksPerDay ?? baseUser.maxTasksPerDay ?? 5),
-    whatsappBalance: user.whatsappBalance !== undefined
-      ? Number(user.whatsappBalance)
-      : baseUser.whatsappBalance !== undefined
-      ? Number(baseUser.whatsappBalance)
-      : Number(user.balance !== undefined ? user.balance : (baseUser.balance ?? 0)),
+    whatsappBalance: parsedWaBalance,
     pendingCashbackTotal: Number(user.pendingCashbackTotal ?? baseUser.pendingCashbackTotal ?? 0),
     activeWhatsAppPackage: user.activeWhatsAppPackage || baseUser.activeWhatsAppPackage,
     isAuthorizedPackagePurchased: Boolean(user.isAuthorizedPackagePurchased ?? baseUser.isAuthorizedPackagePurchased),
@@ -187,7 +172,7 @@ export function registerOrUpdateUser(user: Partial<User> & { id: string }): User
     map.set(`phone_${cleanPhone}`, merged);
   }
 
-  // Persist all users to disk
+  // Persist all users to disk immediately
   const all = getAllStoredUsers();
   saveUsersToFile(all);
 
@@ -195,7 +180,7 @@ export function registerOrUpdateUser(user: Partial<User> & { id: string }): User
 }
 
 export function deleteStoredUser(userId: string): boolean {
-  const map = globalThis._enezaRegisteredUsers || new Map<string, User>();
+  const map = getStoreMap();
   const user = map.get(userId);
   if (user) {
     map.delete(userId);
@@ -206,9 +191,8 @@ export function deleteStoredUser(userId: string): boolean {
   }
 
   // Also remove from file
-  const fileUsers = loadUsersFromFile();
-  const filtered = fileUsers.filter((u) => u.id !== userId && (!user?.phone || u.phone?.replace(/\D/g, '') !== user.phone.replace(/\D/g, '')));
-  saveUsersToFile(filtered);
+  const all = getAllStoredUsers();
+  saveUsersToFile(all);
 
   return true;
 }
